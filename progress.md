@@ -222,3 +222,24 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
     - text: `22 hr 59 min`,
     - right alignment with label maintained (`labelTimeRightDelta = 0`),
     - right-end `min` now fully inside visible text box (`minVisibleInsideTimeBox = true`).
+
+- Follow-up adjustment (requested): remove dynamic `Departs` shrink behavior.
+  - Removed `fitDepartsTextToContainer()` and per-update inline font-size mutation from `/Users/tt021/Desktop/web2/js/cityrail-native.js`.
+  - `Departs` text size is now stable; only class-based styling remains.
+
+- Follow-up validation (no shrink + no rightward drift):
+  - `node --check /Users/tt021/Desktop/web2/js/cityrail-native.js` passed.
+  - Playwright resize run generated:
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-no-autoshrink-desktop.png`
+  - Measured in automation output (before/after horizontal shrink):
+    - font size unchanged (`60.48px` -> `60.48px`),
+    - right-edge alignment unchanged (`rightDelta: 0` both before and after).
+- Follow-up micro-fix (requested): prevent slight right-edge clipping on countdown tail (e.g., last letter of `min`) by adding a tiny right inset to the Depart block while preserving right alignment between `Departs` and countdown.
+  - Updated `/Users/tt021/Desktop/web2/css/style.css` `.pid__depart`: added `box-sizing: border-box; padding-right: 0.08rem;`.
+- Follow-up clipping fix (requested): previous tiny inset was insufficient on some small-window/device pixel grids.
+  - Updated `/Users/tt021/Desktop/web2/css/style.css`:
+    - `.pid__depart` right inset increased to `padding-right: 0.18rem` (still shared by label + time for aligned right edge).
+    - `.pid__depart-time` changed from `overflow: hidden` to `overflow: visible` to prevent right glyph overhang clipping (e.g., final `n` in `min`).
+- Follow-up alignment tweak (requested): shifted only countdown text slightly left for visual alignment with `Departs` right edge.
+  - Updated `/Users/tt021/Desktop/web2/css/style.css` `.pid__depart-time` with `padding-right: 2px` (plus `box-sizing: border-box`).
+- Follow-up alignment tweak (requested): increased countdown left shift from 2px to 7px by setting `.pid__depart-time { padding-right: 7px; }`.
