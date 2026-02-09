@@ -277,3 +277,35 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
   - Validation:
     - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
     - Playwright run generated `/Users/tt021/Desktop/web2/output/flappy-harder/shot-0.png`, `shot-1.png`, plus state snapshots with significantly higher downward velocity values.
+- New app implemented: `music.exe` lightweight MP3 player.
+  - Added `music` config in `/Users/tt021/Desktop/web2/js/main.js` with default track `./assets/music/%E8%AA%AA%E8%AC%8A%E8%80%85.mp3`.
+  - Added launchable window metadata:
+    - `id: "music"`, `exeName: "music.exe"`, `title: "Music Player"`, icon `./assets/icons/music.svg`.
+  - Added `buildMusicSection()` UI in `/Users/tt021/Desktop/web2/js/main.js`:
+    - URL input for MP3 link,
+    - Play/Pause/Stop buttons,
+    - native `<audio controls>` element,
+    - status + source display,
+    - fallback to default track when input is blank.
+  - Added new icon asset `/Users/tt021/Desktop/web2/assets/icons/music.svg`.
+  - Added player styles in `/Users/tt021/Desktop/web2/css/style.css` (`.music-*`).
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - Headless browser check opened `music.exe`, pressed Play with blank input, and confirmed:
+    - `src` became `./assets/music/%E8%AA%AA%E8%AC%8A%E8%80%85.mp3`,
+    - audio playing (`paused: false`),
+    - source text shows default track.
+  - Screenshot: `/Users/tt021/Desktop/web2/output/music-app-check.png`.
+- Music player update (requested): implemented custom progress bar instead of native audio controls.
+  - Updated `/Users/tt021/Desktop/web2/js/main.js` `buildMusicSection()`:
+    - removed native `<audio controls>` UI,
+    - added custom seek bar (`input[type=range]`) with live `current` and `duration` labels,
+    - wired `timeupdate` / `loadedmetadata` / `ended` events to refresh progress UI,
+    - wired seek interaction (`input`/`change`) to set `audio.currentTime`.
+  - Updated `/Users/tt021/Desktop/web2/css/style.css`:
+    - added `.music-progress`, `.music-time`, `.music-progress-bar` styles,
+    - hid native audio widget visually while keeping audio playback engine active.
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - Browser automation confirmed playback + custom progress updates with default track source.
+  - Screenshot: `/Users/tt021/Desktop/web2/output/music-custom-progress-check.png`.

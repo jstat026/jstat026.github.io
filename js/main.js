@@ -153,6 +153,9 @@ const portfolioData = {
     pipeSpeed: 190,
     spawnInterval: 1.2,
   },
+  music: {
+    defaultTrack: "./assets/music/%E8%AA%AA%E8%AC%8A%E8%80%85.mp3",
+  },
   contact: {
     email: "alex.morgan@meridian.edu",
     office: "Room 402, Franklin Computing Hall",
@@ -238,6 +241,15 @@ const windowMeta = [
     canResize: false,
     canMaximize: false,
     fixedSize: true,
+  },
+  {
+    id: "music",
+    exeName: "music.exe",
+    title: "Music Player",
+    icon: "./assets/icons/music.svg",
+    defaultPos: { x: 182, y: 92 },
+    defaultSize: { w: 520, h: 300 },
+    sectionKey: "music",
   },
   {
     id: "cv",
@@ -1082,6 +1094,188 @@ function buildFlappySection() {
   return wrapper;
 }
 
+function buildMusicSection() {
+  const wrapper = createElement("section", "music-section");
+  const configuredDefaultTrack = portfolioData.music?.defaultTrack;
+  const defaultTrack = typeof configuredDefaultTrack === "string" && configuredDefaultTrack.trim()
+    ? configuredDefaultTrack.trim()
+    : "./assets/music/%E8%AA%AA%E8%AC%8A%E8%80%85.mp3";
+
+  wrapper.innerHTML = `
+    <h3 class="section-heading" data-parallax="0.02">music.exe</h3>
+    <p class="music-help">Paste an MP3 URL. Leave it blank to play the default local track.</p>
+    <label class="music-link-row">
+      MP3 Link
+      <input class="retro-input" data-music-link type="url" placeholder="https://example.com/track.mp3" />
+    </label>
+    <div class="music-actions">
+      <button class="retro-btn" type="button" data-music-action="play">Play</button>
+      <button class="retro-btn" type="button" data-music-action="pause">Pause</button>
+      <button class="retro-btn" type="button" data-music-action="stop">Stop</button>
+    </div>
+    <div class="music-progress">
+      <span class="music-time" data-music-current>0:00</span>
+      <input
+        class="music-progress-bar"
+        data-music-progress
+        type="range"
+        min="0"
+        max="1000"
+        step="1"
+        value="0"
+        aria-label="Track progress"
+      />
+      <span class="music-time music-time-end" data-music-duration>0:00</span>
+    </div>
+    <p class="music-now-playing">Source: <span data-music-source>Default track (assets/music/說謊者.mp3)</span></p>
+    <audio class="music-player" data-music-audio preload="metadata"></audio>
+    <p class="music-status" data-music-status>Ready.</p>
+  `;
+
+  const linkEl = wrapper.querySelector("[data-music-link]");
+  const audioEl = wrapper.querySelector("[data-music-audio]");
+  const sourceEl = wrapper.querySelector("[data-music-source]");
+  const statusEl = wrapper.querySelector("[data-music-status]");
+  const progressEl = wrapper.querySelector("[data-music-progress]");
+  const currentTimeEl = wrapper.querySelector("[data-music-current]");
+  const durationEl = wrapper.querySelector("[data-music-duration]");
+  let isSeeking = false;
+
+  function setStatus(text, isError = false) {
+    statusEl.textContent = text;
+    statusEl.classList.toggle("is-error", Boolean(isError));
+  }
+
+  function getSelectedTrack() {
+    const provided = String(linkEl.value || "").trim();
+    return provided || defaultTrack;
+  }
+
+  function formatTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      return "0:00";
+    }
+    const whole = Math.floor(seconds);
+    const mins = Math.floor(whole / 60);
+    const secs = whole % 60;
+    return `${mins}:${String(secs).padStart(2, "0")}`;
+  }
+
+  function updateProgressUI() {
+    const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+    const current = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+    currentTimeEl.textContent = formatTime(current);
+    durationEl.textContent = formatTime(duration);
+
+    if (!isSeeking) {
+      const ratio = duration > 0 ? Math.min(1, Math.max(0, current / duration)) : 0;
+      progressEl.value = String(Math.round(ratio * 1000));
+    }
+  }
+
+  function syncSourceLabel(track) {
+    const usingDefault = track === defaultTrack;
+    sourceEl.textContent = usingDefault ? "Default track (assets/music/說謊者.mp3)" : track;
+  }
+
+  function loadTrackFromInput() {
+    const track = getSelectedTrack();
+    const currentSource = audioEl.getAttribute("src") || "";
+    if (track !== currentSource) {
+      audioEl.setAttribute("src", track);
+      audioEl.load();
+      progressEl.value = "0";
+      currentTimeEl.textContent = "0:00";
+      durationEl.textContent = "0:00";
+    }
+    syncSourceLabel(track);
+    return track;
+  }
+
+  async function playSelectedTrack() {
+    const track = loadTrackFromInput();
+    try {
+      await audioEl.play();
+      setStatus(track === defaultTrack ? "Playing default track." : "Playing supplied link.");
+    } catch {
+      setStatus("Unable to play this source. Check that the link is a reachable MP3.", true);
+    }
+  }
+
+  wrapper.querySelector('[data-music-action="play"]').addEventListener("click", () => {
+    playSelectedTrack();
+  });
+
+  wrapper.querySelector('[data-music-action="pause"]').addEventListener("click", () => {
+    audioEl.pause();
+    setStatus("Paused.");
+  });
+
+  wrapper.querySelector('[data-music-action="stop"]').addEventListener("click", () => {
+    audioEl.pause();
+    audioEl.currentTime = 0;
+    updateProgressUI();
+    setStatus("Stopped.");
+  });
+
+  linkEl.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    playSelectedTrack();
+  });
+
+  audioEl.addEventListener("loadedmetadata", () => {
+    const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+    updateProgressUI();
+    if (duration > 0) {
+      setStatus(`Loaded (${duration.toFixed(1)}s).`);
+    }
+  });
+
+  audioEl.addEventListener("timeupdate", updateProgressUI);
+  audioEl.addEventListener("play", updateProgressUI);
+  audioEl.addEventListener("pause", updateProgressUI);
+
+  progressEl.addEventListener("pointerdown", () => {
+    isSeeking = true;
+  });
+
+  progressEl.addEventListener("input", () => {
+    const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
+    if (duration <= 0) {
+      return;
+    }
+    const ratio = Number(progressEl.value) / 1000;
+    const targetTime = Math.min(duration, Math.max(0, duration * ratio));
+    audioEl.currentTime = targetTime;
+    updateProgressUI();
+  });
+
+  progressEl.addEventListener("change", () => {
+    isSeeking = false;
+    updateProgressUI();
+  });
+
+  progressEl.addEventListener("pointerup", () => {
+    isSeeking = false;
+  });
+
+  audioEl.addEventListener("ended", () => {
+    updateProgressUI();
+    setStatus("Playback finished.");
+  });
+
+  audioEl.addEventListener("error", () => {
+    setStatus("Audio load failed for this source.", true);
+  });
+
+  syncSourceLabel(defaultTrack);
+  updateProgressUI();
+  return wrapper;
+}
+
 function buildContactSection() {
   const wrapper = createElement("section", "contact-section");
   const links = portfolioData.contact.links
@@ -1420,6 +1614,8 @@ function buildSection(sectionKey, onMutation) {
       return buildCityRailSection();
     case "flappy":
       return buildFlappySection();
+    case "music":
+      return buildMusicSection();
     case "cv":
       return buildCvSection();
     case "contact":

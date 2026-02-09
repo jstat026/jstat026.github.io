@@ -746,6 +746,78 @@ select {
   font-weight: 700;
 }
 
+.music-section {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto auto auto auto auto;
+  gap: 8px;
+  align-content: start;
+}
+
+.music-help {
+  margin: 0;
+  font-size: 12px;
+}
+
+.music-link-row {
+  display: grid;
+  gap: 3px;
+  font-size: 11px;
+}
+
+.music-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.music-progress {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.music-time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.music-time-end {
+  text-align: right;
+}
+
+.music-progress-bar {
+  width: 100%;
+  margin: 0;
+  accent-color: #1f5eb6;
+}
+
+.music-now-playing {
+  margin: 0;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.music-player {
+  width: 100%;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.music-status {
+  margin: 0;
+  min-height: 1.1em;
+  font-size: 11px;
+  color: #1f3b1f;
+}
+
+.music-status.is-error {
+  color: #7f0000;
+}
+
 .flappy-section {
   height: 100%;
   min-height: 0;
@@ -1274,7 +1346,7 @@ select {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  padding-right: 355px;
+  padding-right: 0px;
   font-size: var(--depart-size);
   font-weight: 500;
   line-height: 1;
