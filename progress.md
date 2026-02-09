@@ -183,3 +183,42 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
     - long-text font size: `59.136px` (up from previous `53.76px` in same viewport),
     - `Departs` and value right edges match (`labelTimeRightDelta: 0`),
     - PA options exactly: `Off`, `Muffled`, `On`.
+
+- Follow-up fixes (requested):
+  1. Small-window `Departs` right alignment inconsistency.
+     - Updated `/Users/tt021/Desktop/web2/css/style.css`:
+       - `pid__depart` now uses right-aligned flex-column with content-width sizing,
+       - `pid__depart-label` and `pid__depart-time` both use `width: max-content` + right text align.
+     - Result: consistent right-edge alignment in small and large windows.
+  2. Carriage label `1` moved left to sit over the final person icon.
+     - Updated `/Users/tt021/Desktop/web2/js/cityrail-native.js` to add label classes (`pid__capacity-label`, `.is-end`).
+     - Updated `/Users/tt021/Desktop/web2/css/style.css` to shift `.pid__capacity-label.is-end` left.
+  3. Scrolling list abrupt reset/jump.
+     - Root cause: loop distance used `scrollHeight / 2`, which mismatched actual repeated block height due to inserted gap rows.
+     - Fix in `/Users/tt021/Desktop/web2/js/cityrail-native.js`:
+       - compute loop distance as `rowHeight * (stops.length + gapCount)`.
+
+- Follow-up validation (3 requested fixes):
+  - `node --check /Users/tt021/Desktop/web2/js/cityrail-native.js` passed.
+  - Playwright run generated:
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-three-fixes.png`
+  - Measured in automation output:
+    - `Departs` alignment: `labelTimeRightDelta = 0`, `departTimeRightDelta = 0`,
+    - long text size increased again: `61.824px` in same small viewport,
+    - carriage label `1` center shifted left relative to end-car center (`oneToEndCenterDeltaX = -2.54`),
+    - scrolling offsets monotonically moved upward over samples (`positiveJumps = 0`).
+
+- Follow-up bugfix (requested): `min` suffix still clipped on right in small viewport.
+  - Root cause: glyph rendering width could still exceed visible box in scaled layout despite right alignment.
+  - Fix in `/Users/tt021/Desktop/web2/js/cityrail-native.js`:
+    - added `fitDepartsTextToContainer()` that performs a bounded, deterministic font-size reduction until text fits container width,
+    - invoked from `setDepartsText()` after class assignment/reset.
+  - Kept right-edge alignment behavior with shared label/value anchor.
+
+- Follow-up validation (min visibility):
+  - Playwright run generated:
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-departs-min-visible-v2.png`
+  - Measured in automation output:
+    - text: `22 hr 59 min`,
+    - right alignment with label maintained (`labelTimeRightDelta = 0`),
+    - right-end `min` now fully inside visible text box (`minVisibleInsideTimeBox = true`).

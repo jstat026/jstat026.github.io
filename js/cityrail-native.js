@@ -351,6 +351,31 @@ function setText(root, bindKey, value) {
   el.textContent = value ?? "";
 }
 
+function fitDepartsTextToContainer(root, departsEl) {
+  if (!departsEl) {
+    return;
+  }
+  const departContainer = root.querySelector(".pid__depart");
+  if (!departContainer) {
+    return;
+  }
+
+  const availableWidth = Math.max(0, Math.floor(departContainer.getBoundingClientRect().width) - 1);
+  if (availableWidth <= 0) {
+    return;
+  }
+
+  let safety = 0;
+  while (departsEl.scrollWidth > availableWidth && safety < 12) {
+    const current = Number.parseFloat(window.getComputedStyle(departsEl).fontSize);
+    if (!Number.isFinite(current) || current <= 8) {
+      break;
+    }
+    departsEl.style.fontSize = `${current * 0.96}px`;
+    safety += 1;
+  }
+}
+
 function setDepartsText(root, value) {
   setText(root, "departs", value);
   const departsEl = root.querySelector('[data-cr-bind="departs"]');
@@ -359,6 +384,8 @@ function setDepartsText(root, value) {
   }
   const text = String(value ?? "");
   departsEl.classList.toggle("is-long", text.includes(" hr "));
+  departsEl.style.fontSize = "";
+  fitDepartsTextToContainer(root, departsEl);
 }
 
 function normalizeStationName(name) {
@@ -1058,7 +1085,15 @@ async function playAudioSequence(state, entries) {
 function buildCapacityBars(capacities) {
   const levels = Array.isArray(capacities) ? capacities : [];
   const labels = Array.from({ length: levels.length }, (_, idx) => levels.length - idx);
-  const labelHtml = labels.map((label) => `<span>${label}</span>`).join("");
+  const labelHtml = labels
+    .map((label, idx) => {
+      const classes = ["pid__capacity-label"];
+      if (idx === labels.length - 1) {
+        classes.push("is-end");
+      }
+      return `<span class="${classes.join(" ")}">${label}</span>`;
+    })
+    .join("");
   const blockWidth = 66;
   const gapWidth = 6;
   const totalWidth = levels.length * blockWidth + (levels.length - 1) * gapWidth;
@@ -1103,8 +1138,14 @@ function renderStopsList(state) {
     .join("");
 
   const duration = Math.max(14000, stops.length * 1700);
+  const rowsPerLoop = stops.length + gaps.length;
   const beginScroll = (attempt = 0) => {
-    const loopDistance = listEl.scrollHeight / 2;
+    const sampleRow = listEl.querySelector("li");
+    const rowHeight =
+      sampleRow
+        ? Number.parseFloat(window.getComputedStyle(sampleRow).height) || sampleRow.offsetHeight
+        : 0;
+    const loopDistance = rowHeight * rowsPerLoop;
     if (loopDistance <= 1) {
       if (attempt < 180) {
         state.stopRafId = requestAnimationFrame(() => beginScroll(attempt + 1));
