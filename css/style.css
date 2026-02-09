@@ -1667,7 +1667,7 @@ select {
     bottom: calc(var(--taskbar-height) + 4px);
     padding: 0 8px 10px;
     overflow-y: auto;
-    pointer-events: auto;
+    pointer-events: none;
     display: flex;
     flex-direction: column;
     gap: 10px;

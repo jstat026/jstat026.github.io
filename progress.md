@@ -309,3 +309,10 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
   - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
   - Browser automation confirmed playback + custom progress updates with default track source.
   - Screenshot: `/Users/tt021/Desktop/web2/output/music-custom-progress-check.png`.
+- Mobile icon click fix (requested): icons below first row were not clickable.
+  - Root cause: mobile media query had `.window-layer { pointer-events: auto; top: 92px; ... }`, which overlaid the desktop icon area under the first row and intercepted taps.
+  - Fix in `/Users/tt021/Desktop/web2/css/style.css` (`@media (max-width: 768px)`):
+    - changed `.window-layer` to `pointer-events: none;`.
+  - Validation:
+    - Mobile viewport hit-test (`390x844`) confirms `elementFromPoint` at center of each icon (including second-row `music`) resolves to that icon.
+    - Screenshot: `/Users/tt021/Desktop/web2/output/mobile-icon-hit-check.png`.
