@@ -64,6 +64,41 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     });
   }
 
+  function minimizeOtherOpenWindows(exceptId) {
+    if (!isMobile()) {
+      return;
+    }
+
+    states.forEach((state) => {
+      if (state.id === exceptId || !state.isOpen || state.isMinimized) {
+        return;
+      }
+
+      state.isMinimized = true;
+      state.element.hidden = true;
+      state.element.style.display = "none";
+      emit("minimize", state.id);
+    });
+  }
+
+  function enforceSingleOpenWindowOnMobile() {
+    if (!isMobile()) {
+      return;
+    }
+
+    const visible = [...states.values()]
+      .filter((state) => state.isOpen && !state.isMinimized)
+      .sort((a, b) => b.zIndex - a.zIndex);
+
+    if (visible.length <= 1) {
+      return;
+    }
+
+    const keep = visible[0];
+    minimizeOtherOpenWindows(keep.id);
+    activeWindowId = keep.id;
+  }
+
   function clampToLayer(state, x, y, w = state.w, h = state.h) {
     if (layerEl.clientWidth <= 0 || layerEl.clientHeight <= 0) {
       return { x, y };
@@ -182,6 +217,8 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
         applyBounds(state);
       });
     }
+
+    enforceSingleOpenWindowOnMobile();
 
     wasMobile = isMobile();
   }
@@ -396,6 +433,8 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       activeWindowId = fallback?.id ?? null;
     }
 
+    enforceSingleOpenWindowOnMobile();
+
     refreshWindowVisualState();
   }
 
@@ -404,6 +443,8 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     if (!state || !state.isOpen || state.isMinimized) {
       return;
     }
+
+    minimizeOtherOpenWindows(id);
 
     zIndexCounter += 1;
     state.zIndex = zIndexCounter;
@@ -434,6 +475,8 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     state.isOpen = true;
     state.isMinimized = false;
     state.isMaximized = false;
+
+    minimizeOtherOpenWindows(id);
 
     if (!state.hasOpened) {
       state.x = state.defaultPos.x;
@@ -509,6 +552,8 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     if (!state || !state.isOpen || !state.isMinimized) {
       return;
     }
+
+    minimizeOtherOpenWindows(id);
 
     state.isMinimized = false;
     state.element.hidden = false;

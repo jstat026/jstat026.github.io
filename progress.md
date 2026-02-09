@@ -248,3 +248,8 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
   - Height is fixed to exactly two lines of text (with existing font/line-height), even for short messages.
   - Long messages now scroll vertically within that fixed two-line box.
   - Implemented in `/Users/tt021/Desktop/web2/css/style.css` by sizing `.pid__announcement` with a two-line calculated height and `overflow-y: auto`.
+- Follow-up mobile policy update (requested): enforce single open app/window on mobile.
+  - Updated `/Users/tt021/Desktop/web2/js/window-manager.js`:
+    - Added `minimizeOtherOpenWindows(exceptId)` and `enforceSingleOpenWindowOnMobile()` helpers.
+    - On mobile, opening/restoring/focusing a window auto-minimizes every other open window.
+    - Also enforces the rule when applying session state and when switching into mobile viewport mode.
