@@ -94,3 +94,92 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
     - window ratio stayed effectively constant (`~1.83`) across drags,
     - PID transform scales uniformly (`scaleX == scaleY`, e.g. `0.5312`, `0.8672`, `1`),
     - PID internal aspect stayed constant while scaling.
+
+- Follow-up bugfix (requested): CityRail PID started too large when site first loaded in a small/mobile viewport.
+  - Root cause: PID scale baseline depended on first observed viewport size (`pidBaseSize`), so opening directly in a small viewport produced an incorrect baseline.
+  - Fix in `/Users/tt021/Desktop/web2/js/cityrail-native.js`:
+    - replaced dynamic baseline with fixed constants (`PID_BASE_WIDTH = 1000`, `PID_BASE_HEIGHT = 640`),
+    - always compute scale from current viewport against fixed base dimensions.
+
+- Follow-up validation (small viewport startup):
+  - `node --check /Users/tt021/Desktop/web2/js/cityrail-native.js` passed.
+  - Playwright run with initial viewport `430x900` generated:
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-small-start-fixed.png`
+  - Measured in automation output:
+    - CityRail window: `409.12 x 595.61`,
+    - PID viewport: `386.26 x 263.44`,
+    - PID: `386.37 x 247.77`, transform `matrix(0.338, 0, 0, 0.338, 0, 0)`,
+    - confirms correct immediate downscaling on first load in small viewport.
+
+- Follow-up bugfix (requested): `Departs` time overflow/alignment when countdown text is long (example `22 hr 59 min`).
+  - Updated countdown format to compact for hour+ values in `/Users/tt021/Desktop/web2/js/cityrail-native.js`:
+    - `22 hr 59 min` -> `22h 59m`.
+  - Added `setDepartsText()` helper in `/Users/tt021/Desktop/web2/js/cityrail-native.js` so both initial render and ticker updates apply:
+    - text update,
+    - compact class toggle (`.is-compact`) based on length.
+  - Updated `/Users/tt021/Desktop/web2/css/style.css` for right-edge anchoring:
+    - `pid__depart` now uses a right-justified grid container,
+    - `pid__depart-time` is block-level with explicit `text-align: right`,
+    - compact font-size variant for long values.
+
+- Follow-up validation (Departs alignment):
+  - `node --check /Users/tt021/Desktop/web2/js/cityrail-native.js` passed.
+  - Playwright run (small viewport, forced long countdown) generated:
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-departs-right-align-fixed.png`
+  - Measured in automation output:
+    - text: `22h 59m`,
+    - right-edge delta between container and text: `0px` (exact right alignment),
+    - compact class active: `true`.
+
+- Follow-up adjustment (requested): revert `Departs` wording/size changes.
+  - Restored long-format countdown wording in `/Users/tt021/Desktop/web2/js/cityrail-native.js`:
+    - `22h 59m` -> `22 hr 59 min`.
+  - Removed compact font-size CSS rule from `/Users/tt021/Desktop/web2/css/style.css`.
+  - Kept right-alignment fixes for `Departs` positioning.
+
+- Follow-up validation (wording restored):
+  - `node --check /Users/tt021/Desktop/web2/js/cityrail-native.js` passed.
+  - Playwright run (small viewport, forced long countdown) generated:
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-departs-hr-min-restored.png`
+  - Measured in automation output:
+    - text: `22 hr 59 min`,
+    - right-edge delta: `0px`.
+
+- Follow-up adjustment (requested): align time with right end of `Departs` and make long `hr/min` text slightly smaller.
+  - Updated `/Users/tt021/Desktop/web2/css/style.css`:
+    - `pid__depart` now uses content-width right-anchored layout (`margin-left: auto`, `width: max-content`),
+    - `pid__depart-label` and `pid__depart-time` both explicitly right-align to the same edge,
+    - added `.pid__depart-time.is-long` size reduction (`0.8x`) for long format values.
+  - Updated `/Users/tt021/Desktop/web2/js/cityrail-native.js`:
+    - `setDepartsText()` now toggles `.is-long` only when text includes ` hr `.
+
+- Follow-up validation (right-edge to label + smaller long text):
+  - `node --check /Users/tt021/Desktop/web2/js/cityrail-native.js` passed.
+  - Playwright run (small viewport, forced long countdown) generated:
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-departs-aligned-to-label.png`
+  - Measured in automation output:
+    - text: `22 hr 59 min`,
+    - `isLong`: `true`,
+    - label right edge equals time right edge (`labelTimeDelta: 0`),
+    - long text font size reduced (`53.76px` at this scaled viewport).
+
+- Follow-up adjustment (requested): make long `hr/min` text slightly bigger; update PA options.
+  - Updated `/Users/tt021/Desktop/web2/css/style.css`:
+    - increased `.pid__depart-time.is-long` from `0.8` to `0.88` of base `depart-size`.
+  - Updated `/Users/tt021/Desktop/web2/js/cityrail-native.js`:
+    - PA dropdown now shows:
+      - `Off` (`value="off"`),
+      - `Muffled` (`value="on"`),
+      - `On` (`value="room"`),
+    - removed `Outdoor` option from UI,
+    - mapped legacy saved `paEffect: "outdoor"` to `room` in `normalizeConfig`.
+
+- Follow-up validation (final tune):
+  - `node --check /Users/tt021/Desktop/web2/js/cityrail-native.js` passed.
+  - Playwright run generated:
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-departs-and-pa-updated.png`
+  - Measured in automation output:
+    - text: `22 hr 59 min`,
+    - long-text font size: `59.136px` (up from previous `53.76px` in same viewport),
+    - `Departs` and value right edges match (`labelTimeRightDelta: 0`),
+    - PA options exactly: `Off`, `Muffled`, `On`.

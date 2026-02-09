@@ -1,4 +1,6 @@
 const STORAGE_KEY = "academic-os.cityrail.native.v1";
+const PID_BASE_WIDTH = 1000;
+const PID_BASE_HEIGHT = 640;
 
 const intercityLineName = "Intercity";
 const regionalLineName = "Regional";
@@ -156,6 +158,14 @@ function normalizeConfig(raw) {
   merged.stops = Array.isArray(merged.stops)
     ? merged.stops.map((stop) => String(stop).trim()).filter(Boolean)
     : [];
+  const paEffect = String(merged.paEffect || "off").trim().toLowerCase();
+  if (paEffect === "outdoor") {
+    merged.paEffect = "room";
+  } else if (paEffect === "off" || paEffect === "on" || paEffect === "room") {
+    merged.paEffect = paEffect;
+  } else {
+    merged.paEffect = "off";
+  }
 
   return merged;
 }
@@ -339,6 +349,16 @@ function setText(root, bindKey, value) {
     return;
   }
   el.textContent = value ?? "";
+}
+
+function setDepartsText(root, value) {
+  setText(root, "departs", value);
+  const departsEl = root.querySelector('[data-cr-bind="departs"]');
+  if (!departsEl) {
+    return;
+  }
+  const text = String(value ?? "");
+  departsEl.classList.toggle("is-long", text.includes(" hr "));
 }
 
 function normalizeStationName(name) {
@@ -1144,26 +1164,6 @@ function populateTemplateSelect(state) {
   ].join("");
 }
 
-function ensurePidBaseSize(state) {
-  if (state.pidBaseSize) {
-    return true;
-  }
-
-  const viewport = state.elements.pidViewport;
-  if (!viewport) {
-    return false;
-  }
-
-  const width = Math.round(viewport.clientWidth);
-  const height = Math.round(viewport.clientHeight);
-  if (width < 160 || height < 160) {
-    return false;
-  }
-
-  state.pidBaseSize = { width, height };
-  return true;
-}
-
 function updatePidScale(state) {
   const viewport = state.elements.pidViewport;
   const stage = state.elements.pidStage;
@@ -1172,14 +1172,10 @@ function updatePidScale(state) {
     return;
   }
 
-  if (!ensurePidBaseSize(state)) {
-    return;
-  }
-
   const viewportWidth = viewport.clientWidth;
   const viewportHeight = viewport.clientHeight;
-  const baseWidth = state.pidBaseSize.width;
-  const baseHeight = state.pidBaseSize.height;
+  const baseWidth = PID_BASE_WIDTH;
+  const baseHeight = PID_BASE_HEIGHT;
   if (viewportWidth <= 0 || viewportHeight <= 0 || baseWidth <= 0 || baseHeight <= 0) {
     return;
   }
@@ -1189,8 +1185,8 @@ function updatePidScale(state) {
     Math.min(viewportWidth / baseWidth, viewportHeight / baseHeight)
   );
 
-  stage.style.width = `${Math.round(baseWidth * scale)}px`;
-  stage.style.height = `${Math.round(baseHeight * scale)}px`;
+  stage.style.width = `${baseWidth * scale}px`;
+  stage.style.height = `${baseHeight * scale}px`;
   pidRoot.style.width = `${baseWidth}px`;
   pidRoot.style.height = `${baseHeight}px`;
   pidRoot.style.transform = `scale(${scale})`;
@@ -1229,7 +1225,8 @@ function render(state) {
   setText(root, "cars", `${config.carsCount} cars`);
   setText(root, "stopsType", config.stopsType);
   setText(root, "time", formattedNow());
-  setText(root, "departs", formatDepartureCountdown(config.departsTime));
+  const departsText = formatDepartureCountdown(config.departsTime);
+  setDepartsText(root, departsText);
 
   const lineColor = lineColors[config.line];
   if (lineColor && !isIntercityLayout && pidRoot) {
@@ -1374,9 +1371,8 @@ export function createCityRailNativeApp() {
         PA Effect
         <select class="cityrail-input" data-cr-field="paEffect">
           <option value="off">Off</option>
-          <option value="on">On</option>
-          <option value="room">Room</option>
-          <option value="outdoor">Outdoor</option>
+          <option value="on">Muffled</option>
+          <option value="room">On</option>
         </select>
       </label>
 
@@ -1477,7 +1473,6 @@ export function initCityRailNativeApp(root) {
     tickerId: 0,
     announcementSource: null,
     announcementActive: false,
-    pidBaseSize: null,
     pidResizeObserver: null,
     elements: {
       fields,
@@ -1560,7 +1555,7 @@ export function initCityRailNativeApp(root) {
 
   state.tickerId = window.setInterval(() => {
     setText(root, "time", formattedNow());
-    setText(root, "departs", formatDepartureCountdown(state.config.departsTime));
+    setDepartsText(root, formatDepartureCountdown(state.config.departsTime));
   }, 1000);
 
   ensureResources().then(() => {

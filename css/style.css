@@ -1185,19 +1185,37 @@ select {
 .cityrail-display-wrap .pid__depart {
   margin-top: auto;
   margin-bottom: 0.3rem;
+  margin-left: auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  padding-right: 0.15rem;
+  display: grid;
+  justify-items: end;
   text-align: right;
-  width: 100%;
 }
 
 .cityrail-display-wrap .pid__depart-label {
+  width: 100%;
   font-size: var(--depart-label-size);
+  justify-self: end;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .cityrail-display-wrap .pid__depart-time {
+  display: block;
+  width: 100%;
+  min-width: 0;
   font-size: var(--depart-size);
   font-weight: 500;
   line-height: 1;
+  text-align: right;
   white-space: nowrap;
+}
+
+.cityrail-display-wrap .pid__depart-time.is-long {
+  font-size: calc(var(--depart-size) * 0.88);
 }
 
 .cityrail-display-wrap .pid__actions {
