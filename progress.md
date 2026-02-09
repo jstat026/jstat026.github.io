@@ -45,3 +45,21 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
     - `/Users/tt021/Desktop/web2/output/flappy-polish/shot-1.png`
     - `/Users/tt021/Desktop/web2/output/flappy-polish/state-0.json`
     - `/Users/tt021/Desktop/web2/output/flappy-polish/state-1.json`
+
+- Follow-up fix (requested): remove sun and eliminate right-edge hill gap.
+  - Removed sun/glow rendering from `drawBackground()` in `/Users/tt021/Desktop/web2/js/main.js`.
+  - Updated hill path generation to always add a final sample at `x = state.width`, preventing a visible right-edge wedge when canvas width is not a multiple of the hill step.
+
+- Follow-up validation (requested fix):
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - Playwright run:
+    - `/Users/tt021/Desktop/web2/output/flappy-bg-fix/shot-0.png`
+    - `/Users/tt021/Desktop/web2/output/flappy-bg-fix/shot-1.png`
+    - `/Users/tt021/Desktop/web2/output/flappy-bg-fix/state-0.json`
+    - `/Users/tt021/Desktop/web2/output/flappy-bg-fix/state-1.json`
+  - Manual screenshot inspection confirmed:
+    - no sun rendered,
+    - hills extend to the right edge.
+
+- TODO / suggestions:
+  - If desired, add one automated visual assertion that samples right-edge hill pixels to guard against future regressions.
