@@ -221,9 +221,10 @@ const windowMeta = [
     defaultPos: { x: 168, y: 64 },
     defaultSize: { w: 1320, h: 720 },
     sectionKey: "cityrail",
-    canResize: false,
+    canResize: true,
+    resizeAspectRatio: 1320 / 720,
     canMaximize: false,
-    fixedSize: true,
+    fixedSize: false,
   },
   {
     id: "flappy",
@@ -1562,6 +1563,10 @@ function renderWindows() {
       defaultPos: meta.defaultPos,
       defaultSize: meta.defaultSize,
       canResize: meta.canResize !== false,
+      resizeAspectRatio:
+        Number.isFinite(meta.resizeAspectRatio) && meta.resizeAspectRatio > 0
+          ? meta.resizeAspectRatio
+          : null,
       canMaximize: meta.canMaximize !== false,
       fixedSize: meta.fixedSize === true,
     });

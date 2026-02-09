@@ -1144,10 +1144,62 @@ function populateTemplateSelect(state) {
   ].join("");
 }
 
+function ensurePidBaseSize(state) {
+  if (state.pidBaseSize) {
+    return true;
+  }
+
+  const viewport = state.elements.pidViewport;
+  if (!viewport) {
+    return false;
+  }
+
+  const width = Math.round(viewport.clientWidth);
+  const height = Math.round(viewport.clientHeight);
+  if (width < 160 || height < 160) {
+    return false;
+  }
+
+  state.pidBaseSize = { width, height };
+  return true;
+}
+
+function updatePidScale(state) {
+  const viewport = state.elements.pidViewport;
+  const stage = state.elements.pidStage;
+  const pidRoot = state.elements.pidRoot;
+  if (!viewport || !stage || !pidRoot) {
+    return;
+  }
+
+  if (!ensurePidBaseSize(state)) {
+    return;
+  }
+
+  const viewportWidth = viewport.clientWidth;
+  const viewportHeight = viewport.clientHeight;
+  const baseWidth = state.pidBaseSize.width;
+  const baseHeight = state.pidBaseSize.height;
+  if (viewportWidth <= 0 || viewportHeight <= 0 || baseWidth <= 0 || baseHeight <= 0) {
+    return;
+  }
+
+  const scale = Math.max(
+    0.1,
+    Math.min(viewportWidth / baseWidth, viewportHeight / baseHeight)
+  );
+
+  stage.style.width = `${Math.round(baseWidth * scale)}px`;
+  stage.style.height = `${Math.round(baseHeight * scale)}px`;
+  pidRoot.style.width = `${baseWidth}px`;
+  pidRoot.style.height = `${baseHeight}px`;
+  pidRoot.style.transform = `scale(${scale})`;
+}
+
 function render(state) {
   const { root, config, elements } = state;
 
-  const pidRoot = root.querySelector(".pid");
+  const pidRoot = state.elements.pidRoot;
   const badge = root.querySelector(".pid__line-badge");
   const isIntercity = config.line === intercityLineName;
   const isRegional = config.line === regionalLineName;
@@ -1200,6 +1252,7 @@ function render(state) {
     elements.fields.stops.value = state.rawStopsInput ?? config.stops.join("\n");
   }
 
+  updatePidScale(state);
   saveConfig(config);
 }
 
@@ -1339,8 +1392,10 @@ export function createCityRailNativeApp() {
       </button>
     </aside>
 
-    <section class="cityrail-display-wrap">
-      <main class="pid" role="img" aria-label="Sydney Trains passenger information display">
+    <section class="cityrail-display-wrap" data-cr-display-wrap>
+      <div class="cityrail-pid-viewport" data-cr-pid-viewport>
+        <div class="cityrail-pid-stage" data-cr-pid-stage>
+      <main class="pid" data-cr-pid role="img" aria-label="Sydney Trains passenger information display">
         <header class="pid__top">
           <div class="pid__title">Next service</div>
           <div class="pid__timeblock">
@@ -1388,6 +1443,8 @@ export function createCityRailNativeApp() {
           </div>
         </div>
       </main>
+        </div>
+      </div>
     </section>
   `;
   return root;
@@ -1420,6 +1477,8 @@ export function initCityRailNativeApp(root) {
     tickerId: 0,
     announcementSource: null,
     announcementActive: false,
+    pidBaseSize: null,
+    pidResizeObserver: null,
     elements: {
       fields,
       templateSelect: root.querySelector("[data-cr-template]"),
@@ -1428,6 +1487,10 @@ export function initCityRailNativeApp(root) {
       stopsList: root.querySelector('[data-cr-bind="stops"]'),
       announceButton: root.querySelector('[data-cr-action="announce"]'),
       announcementText: root.querySelector("[data-cr-announcement]"),
+      displayWrap: root.querySelector("[data-cr-display-wrap]"),
+      pidViewport: root.querySelector("[data-cr-pid-viewport]"),
+      pidStage: root.querySelector("[data-cr-pid-stage]"),
+      pidRoot: root.querySelector("[data-cr-pid]"),
     },
   };
 
@@ -1475,9 +1538,25 @@ export function initCityRailNativeApp(root) {
       return;
     }
     renderStopsList(state);
+    updatePidScale(state);
   };
   document.addEventListener("window:open", rerenderStopsOnShow);
   document.addEventListener("window:restore", rerenderStopsOnShow);
+
+  const updatePidScaleOnWindowResize = (event) => {
+    if (event?.detail?.id !== "cityrail") {
+      return;
+    }
+    updatePidScale(state);
+  };
+  document.addEventListener("window:resize", updatePidScaleOnWindowResize);
+
+  if (typeof ResizeObserver === "function" && state.elements.displayWrap) {
+    state.pidResizeObserver = new ResizeObserver(() => {
+      updatePidScale(state);
+    });
+    state.pidResizeObserver.observe(state.elements.displayWrap);
+  }
 
   state.tickerId = window.setInterval(() => {
     setText(root, "time", formattedNow());

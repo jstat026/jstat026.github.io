@@ -78,6 +78,52 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     };
   }
 
+  function getMinSize(state) {
+    return {
+      minW: state.fixedSize ? state.defaultSize.w : 320,
+      minH: state.fixedSize ? state.defaultSize.h : 220,
+    };
+  }
+
+  function getAspectConstraint(state, x = state.x, y = state.y) {
+    const ratio = Number(state.resizeAspectRatio);
+    if (!Number.isFinite(ratio) || ratio <= 0) {
+      return null;
+    }
+
+    const { minW: baseMinW, minH: baseMinH } = getMinSize(state);
+    let minW = baseMinW;
+    let minH = minW / ratio;
+    if (minH < baseMinH) {
+      minH = baseMinH;
+      minW = minH * ratio;
+    }
+
+    const rawMaxW = Math.max(minW, layerEl.clientWidth - x);
+    const rawMaxH = Math.max(minH, layerEl.clientHeight - y);
+
+    let maxW = rawMaxW;
+    let maxH = maxW / ratio;
+    if (maxH > rawMaxH) {
+      maxH = rawMaxH;
+      maxW = maxH * ratio;
+    }
+
+    return { ratio, minW, minH, maxW, maxH };
+  }
+
+  function applyAspectSize(state, preferredW, x = state.x, y = state.y) {
+    const constraint = getAspectConstraint(state, x, y);
+    if (!constraint) {
+      return false;
+    }
+
+    const nextW = Math.min(Math.max(preferredW, constraint.minW), constraint.maxW);
+    state.w = nextW;
+    state.h = nextW / constraint.ratio;
+    return true;
+  }
+
   function applyBounds(state) {
     if (isMobile()) {
       state.element.style.left = "";
@@ -92,6 +138,12 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       state.h = state.defaultSize.h;
       state.isMaximized = false;
       state.restoreBounds = null;
+    }
+
+    if (!applyAspectSize(state, state.w)) {
+      const { minW, minH } = getMinSize(state);
+      state.w = Math.max(minW, state.w);
+      state.h = Math.max(minH, state.h);
     }
 
     const clamped = clampToLayer(state, state.x, state.y, state.w, state.h);
@@ -143,6 +195,7 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     defaultPos,
     defaultSize,
     canResize = true,
+    resizeAspectRatio = null,
     canMaximize = true,
     fixedSize = false,
   }) {
@@ -163,6 +216,7 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       defaultPos,
       defaultSize,
       canResize,
+      resizeAspectRatio,
       canMaximize,
       fixedSize,
       desktopBounds: null,
@@ -240,8 +294,7 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
 
     states.forEach((state) => {
       const saved = savedById.get(state.id);
-      const minW = state.fixedSize ? state.defaultSize.w : 320;
-      const minH = state.fixedSize ? state.defaultSize.h : 220;
+      const { minW, minH } = getMinSize(state);
 
       if (!saved) {
         state.isOpen = false;
@@ -266,6 +319,13 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       }
       if (!state.fixedSize && Number.isFinite(saved.h)) {
         state.h = Math.max(minH, saved.h);
+      }
+      if (!state.fixedSize && Number.isFinite(state.resizeAspectRatio)) {
+        if (Number.isFinite(saved.w)) {
+          state.h = state.w / state.resizeAspectRatio;
+        } else if (Number.isFinite(saved.h)) {
+          state.w = state.h * state.resizeAspectRatio;
+        }
       }
       if (state.fixedSize) {
         state.w = state.defaultSize.w;
@@ -295,6 +355,9 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
           w: Math.max(minW, saved.restoreBounds.w),
           h: Math.max(minH, saved.restoreBounds.h),
         };
+        if (Number.isFinite(state.resizeAspectRatio)) {
+          state.restoreBounds.h = state.restoreBounds.w / state.resizeAspectRatio;
+        }
       } else {
         state.restoreBounds = null;
       }
@@ -469,13 +532,14 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     const padding = 4;
     const layerWidth = layerEl.clientWidth;
     const layerHeight = layerEl.clientHeight;
+    const { minW, minH } = getMinSize(state);
 
     if (!state.isMaximized) {
       state.restoreBounds = { x: state.x, y: state.y, w: state.w, h: state.h };
       state.x = 0;
       state.y = 0;
-      state.w = Math.max(320, layerWidth - padding);
-      state.h = Math.max(220, layerHeight - padding);
+      state.w = Math.max(minW, layerWidth - padding);
+      state.h = Math.max(minH, layerHeight - padding);
       state.isMaximized = true;
     } else {
       if (state.restoreBounds) {
@@ -619,24 +683,44 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
         const startY = event.clientY;
         const startW = state.w;
         const startH = state.h;
+        const { minW, minH } = getMinSize(state);
 
         function onPointerMove(moveEvent) {
           const dx = moveEvent.clientX - startX;
           const dy = moveEvent.clientY - startY;
 
+          if (Number.isFinite(state.resizeAspectRatio) && state.resizeAspectRatio > 0) {
+            let preferredW = startW;
+            if (edge === "e") {
+              preferredW = startW + dx;
+            } else if (edge === "s") {
+              preferredW = (startH + dy) * state.resizeAspectRatio;
+            } else {
+              const widthFromX = startW + dx;
+              const widthFromY = (startH + dy) * state.resizeAspectRatio;
+              const xDelta = Math.abs(widthFromX - startW);
+              const yDelta = Math.abs(widthFromY - startW);
+              preferredW = xDelta >= yDelta ? widthFromX : widthFromY;
+            }
+
+            applyAspectSize(state, preferredW);
+            applyBounds(state);
+            return;
+          }
+
           let nextW = startW;
           let nextH = startH;
 
           if (edge.includes("e")) {
-            nextW = Math.max(320, startW + dx);
+            nextW = Math.max(minW, startW + dx);
           }
 
           if (edge.includes("s")) {
-            nextH = Math.max(220, startH + dy);
+            nextH = Math.max(minH, startH + dy);
           }
 
-          const maxW = Math.max(320, layerEl.clientWidth - state.x);
-          const maxH = Math.max(220, layerEl.clientHeight - state.y);
+          const maxW = Math.max(minW, layerEl.clientWidth - state.x);
+          const maxH = Math.max(minH, layerEl.clientHeight - state.y);
 
           state.w = Math.min(nextW, maxW);
           state.h = Math.min(nextH, maxH);

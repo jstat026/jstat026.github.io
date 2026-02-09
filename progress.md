@@ -63,3 +63,34 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
 
 - TODO / suggestions:
   - If desired, add one automated visual assertion that samples right-edge hill pixels to guard against future regressions.
+
+- Follow-up feature (requested): make `cityrail.exe` resizable with locked aspect ratio, and scale PID uniformly while resizing.
+  - Enabled CityRail window resizing in `/Users/tt021/Desktop/web2/js/main.js` and added `resizeAspectRatio: 1320 / 720`.
+  - Passed `resizeAspectRatio` into window registration so constraints are window-specific.
+  - Extended `/Users/tt021/Desktop/web2/js/window-manager.js`:
+    - added per-window aspect constraint handling,
+    - enforced ratio during pointer resize on `e`, `s`, and `se` handles,
+    - normalized saved/restored bounds to respect aspect ratio,
+    - centralized min-size handling.
+  - Updated CityRail native app structure in `/Users/tt021/Desktop/web2/js/cityrail-native.js`:
+    - wrapped PID inside viewport/stage containers,
+    - added `updatePidScale(state)` to scale the entire PID board via transform,
+    - wired scaling to render, `window:open`, `window:restore`, `window:resize`, and `ResizeObserver`.
+  - Updated `/Users/tt021/Desktop/web2/css/style.css`:
+    - added `.cityrail-pid-viewport` + `.cityrail-pid-stage`,
+    - switched PID typography/layout tokens to fixed base metrics,
+    - removed responsive PID reflow overrides so geometry stays proportional.
+
+- Follow-up validation (CityRail resize + scale):
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/window-manager.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/cityrail-native.js` passed.
+  - Playwright automation (`playwright_cli.sh` + `run-code`) produced:
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-resize-v2-initial.png`
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-resize-v2-after-se-shrink.png`
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-resize-v2-after-e-grow.png`
+    - `/Users/tt021/Desktop/web2/output/playwright/cityrail-resize-v2-after-s-grow.png`
+  - Measured from automation output:
+    - window ratio stayed effectively constant (`~1.83`) across drags,
+    - PID transform scales uniformly (`scaleX == scaleY`, e.g. `0.5312`, `0.8672`, `1`),
+    - PID internal aspect stayed constant while scaling.
