@@ -836,22 +836,6 @@ function buildFlappySection() {
     context.fillStyle = skyGradient;
     context.fillRect(0, 0, state.width, state.height);
 
-    const sunRadius = Math.max(28, Math.min(44, state.height * 0.11));
-    const sunGradient = context.createRadialGradient(
-      state.width * 0.84,
-      state.height * 0.2,
-      0,
-      state.width * 0.84,
-      state.height * 0.2,
-      sunRadius * 1.6
-    );
-    sunGradient.addColorStop(0, "rgba(255, 245, 165, 0.95)");
-    sunGradient.addColorStop(1, "rgba(255, 245, 165, 0)");
-    context.fillStyle = sunGradient;
-    context.beginPath();
-    context.arc(state.width * 0.84, state.height * 0.2, sunRadius * 1.6, 0, Math.PI * 2);
-    context.fill();
-
     const cloudBaseY = Math.max(32, state.height * 0.19);
     const cloudShift = state.cloudOffset;
     drawCloud(36 - cloudShift, cloudBaseY, 0.95);
@@ -863,12 +847,17 @@ function buildFlappySection() {
     drawCloud(492 - cloudShift + state.width, cloudBaseY + 8, 1);
 
     const horizonY = state.height - 56;
+    const hillStep = 20;
+    const hillYAt = (x) => horizonY - 8 - Math.sin((x + state.elapsed * 62) * 0.018) * 6;
     context.fillStyle = "#83cb6d";
     context.beginPath();
     context.moveTo(0, horizonY);
-    for (let x = 0; x <= state.width; x += 20) {
-      const y = horizonY - 8 - Math.sin((x + state.elapsed * 62) * 0.018) * 6;
-      context.lineTo(x, y);
+    for (let x = 0; x <= state.width; x += hillStep) {
+      context.lineTo(x, hillYAt(x));
+    }
+    const lastHillX = Math.floor(state.width / hillStep) * hillStep;
+    if (lastHillX < state.width) {
+      context.lineTo(state.width, hillYAt(state.width));
     }
     context.lineTo(state.width, state.height);
     context.lineTo(0, state.height);
