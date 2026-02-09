@@ -243,3 +243,8 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
 - Follow-up alignment tweak (requested): shifted only countdown text slightly left for visual alignment with `Departs` right edge.
   - Updated `/Users/tt021/Desktop/web2/css/style.css` `.pid__depart-time` with `padding-right: 2px` (plus `box-sizing: border-box`).
 - Follow-up alignment tweak (requested): increased countdown left shift from 2px to 7px by setting `.pid__depart-time { padding-right: 7px; }`.
+- Follow-up PID announcement panel update (requested):
+  - The black announcement box now always spans the full row width.
+  - Height is fixed to exactly two lines of text (with existing font/line-height), even for short messages.
+  - Long messages now scroll vertically within that fixed two-line box.
+  - Implemented in `/Users/tt021/Desktop/web2/css/style.css` by sizing `.pid__announcement` with a two-line calculated height and `overflow-y: auto`.

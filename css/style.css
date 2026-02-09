@@ -1245,24 +1245,38 @@ select {
 }
 
 .cityrail-display-wrap .pid__announcement {
-  font-size: 0.82rem;
+  --announcement-font-size: 0.82rem;
+  --announcement-line-height: 1.2;
+  --announcement-lines: 2;
+  --announcement-pad-y: 0.28rem;
+  font-size: var(--announcement-font-size);
   color: #f5f5f5;
   background: #0f0f0f;
   border-radius: 0;
-  height: 100%;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: 0.28rem 0.55rem;
+  width: 100%;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  height: calc(
+    (var(--announcement-font-size) * var(--announcement-line-height) * var(--announcement-lines)) +
+      (var(--announcement-pad-y) * 2)
+  );
+  min-height: calc(
+    (var(--announcement-font-size) * var(--announcement-line-height) * var(--announcement-lines)) +
+      (var(--announcement-pad-y) * 2)
+  );
+  max-height: calc(
+    (var(--announcement-font-size) * var(--announcement-line-height) * var(--announcement-lines)) +
+      (var(--announcement-pad-y) * 2)
+  );
+  padding: var(--announcement-pad-y) 0.55rem;
   font-family: "Courier New", monospace;
   white-space: normal;
   overflow-y: auto;
   overflow-x: hidden;
-  line-height: 1.2;
+  line-height: var(--announcement-line-height);
   word-break: break-word;
   scrollbar-gutter: stable;
   min-width: 0;
-  max-width: 100%;
 }
 
 .cityrail-display-wrap .pid__announcement-text {
