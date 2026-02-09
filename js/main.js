@@ -147,10 +147,11 @@ const portfolioData = {
     name: "CityRail Control",
   },
   flappy: {
-    gravity: 1120,
+    gravity: 1200,
+    fallGravityMultiplier: 1.52,
     jumpVelocity: -360,
-    pipeSpeed: 175,
-    spawnInterval: 1.32,
+    pipeSpeed: 190,
+    spawnInterval: 1.2,
   },
   contact: {
     email: "alex.morgan@meridian.edu",
@@ -636,10 +637,18 @@ function buildFlappySection() {
   };
 
   const gravity = Number(config.gravity) || 1120;
+  const fallGravityMultiplier = Math.max(1, Number(config.fallGravityMultiplier) || 1.28);
   const jumpVelocity = Number(config.jumpVelocity) || -360;
   const pipeSpeed = Number(config.pipeSpeed) || 175;
   const spawnInterval = Number(config.spawnInterval) || 1.32;
   const pipeWidth = 72;
+  const cloudPattern = [
+    { x: 36, yOffset: 0, scale: 0.95 },
+    { x: 260, yOffset: -12, scale: 0.85 },
+    { x: 492, yOffset: 8, scale: 1 },
+    { x: 720, yOffset: -6, scale: 0.9 },
+  ];
+  const cloudPatternSpan = 760;
 
   function isWindowVisible() {
     const hostWindow = wrapper.closest(".window");
@@ -701,7 +710,7 @@ function buildFlappySection() {
   }
 
   function spawnPipe() {
-    const gapHeight = Math.max(130, Math.min(184, state.height * 0.3));
+    const gapHeight = Math.max(122, Math.min(172, state.height * 0.28));
     const topPadding = 36;
     const bottomPadding = 56;
     const minCenter = topPadding + gapHeight * 0.5;
@@ -784,7 +793,8 @@ function buildFlappySection() {
       spawnPipe();
     }
 
-    state.bird.vy += gravity * dt;
+    const gravityScale = state.bird.vy > 0 ? fallGravityMultiplier : 1;
+    state.bird.vy += gravity * gravityScale * dt;
     state.bird.y += state.bird.vy * dt;
 
     state.pipes.forEach((pipe) => {
@@ -813,9 +823,7 @@ function buildFlappySection() {
 
   function advanceAmbience(dt) {
     state.elapsed += dt;
-    if (state.width > 0) {
-      state.cloudOffset = (state.cloudOffset + dt * 22) % state.width;
-    }
+    state.cloudOffset = (state.cloudOffset + dt * 22) % 100000;
   }
 
   function drawCloud(x, y, scale) {
@@ -838,14 +846,14 @@ function buildFlappySection() {
     context.fillRect(0, 0, state.width, state.height);
 
     const cloudBaseY = Math.max(32, state.height * 0.19);
-    const cloudShift = state.cloudOffset;
-    drawCloud(36 - cloudShift, cloudBaseY, 0.95);
-    drawCloud(260 - cloudShift, cloudBaseY - 12, 0.85);
-    drawCloud(492 - cloudShift, cloudBaseY + 8, 1);
-    drawCloud(720 - cloudShift, cloudBaseY - 6, 0.9);
-    drawCloud(36 - cloudShift + state.width, cloudBaseY, 0.95);
-    drawCloud(260 - cloudShift + state.width, cloudBaseY - 12, 0.85);
-    drawCloud(492 - cloudShift + state.width, cloudBaseY + 8, 1);
+    const cloudShift = ((state.cloudOffset % cloudPatternSpan) + cloudPatternSpan) % cloudPatternSpan;
+    const laneCount = Math.ceil((state.width + cloudPatternSpan * 2) / cloudPatternSpan);
+    for (let lane = -1; lane <= laneCount; lane += 1) {
+      const laneOffsetX = lane * cloudPatternSpan - cloudShift;
+      cloudPattern.forEach((cloud) => {
+        drawCloud(cloud.x + laneOffsetX, cloudBaseY + cloud.yOffset, cloud.scale);
+      });
+    }
 
     const horizonY = state.height - 56;
     const hillStep = 20;

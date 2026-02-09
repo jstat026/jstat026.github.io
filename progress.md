@@ -257,3 +257,23 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
   - Replaced text glyph rendering with centered CSS-drawn shapes for minimize/maximize/close.
   - Increased stroke thickness for all three controls.
   - Enlarged/centered maximize square and centered close `X`.
+- Follow-up Flappy fixes (requested): clouds intermittently disappearing + increased difficulty (faster drop than rise).
+  - Updated `/Users/tt021/Desktop/web2/js/main.js` in `buildFlappySection()`:
+    - Added `fallGravityMultiplier` config (default `1.28`) and applied it only when `bird.vy > 0`, so descent accelerates faster than ascent.
+    - Reworked cloud rendering to a tiled pattern (`cloudPattern` + `cloudPatternSpan`) that always covers the viewport width with overlap lanes.
+    - Replaced width-modulo cloud offset logic with a stable rolling offset (`% 100000`) so cloud positioning no longer depends on viewport width modulo behavior.
+  - Validation:
+    - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+    - Playwright run produced `/Users/tt021/Desktop/web2/output/flappy-cloud-fix/shot-0.png` ... `shot-7.png` with no console/page errors emitted.
+    - Manual screenshot inspection confirms clouds remain present across captured frames after the patch.
+    - Runtime state in captures shows higher downward velocity than before (consistent with increased gravity during descent).
+- Follow-up Flappy tuning (requested): increased difficulty further.
+  - Updated `/Users/tt021/Desktop/web2/js/main.js`:
+    - `gravity: 1200` (was 1120)
+    - `fallGravityMultiplier: 1.52` (was 1.28)
+    - `pipeSpeed: 190` (was 175)
+    - `spawnInterval: 1.2` (was 1.32)
+    - pipe gap reduced in `spawnPipe()` to `Math.max(122, Math.min(172, state.height * 0.28))` (was `Math.max(130, Math.min(184, state.height * 0.3))`)
+  - Validation:
+    - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+    - Playwright run generated `/Users/tt021/Desktop/web2/output/flappy-harder/shot-0.png`, `shot-1.png`, plus state snapshots with significantly higher downward velocity values.
