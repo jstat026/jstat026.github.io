@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OS</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+    <link rel="stylesheet" href="./css/style.css" />
+  </head>
+  <body>
+    <div id="desktop" class="desktop" aria-label="Retro desktop environment">
+      <div id="desktop-icons" class="desktop-icons" role="list"></div>
+
+      <div id="window-layer" class="window-layer" aria-live="polite"></div>
+
+      <nav id="start-menu" class="start-menu is-hidden" aria-label="Start menu"></nav>
+
+      <footer id="taskbar" class="taskbar" aria-label="Taskbar">
+        <button id="start-button" class="start-button retro-btn" aria-expanded="false">
+          <img src="./assets/icons/start.svg" alt="" aria-hidden="true" />
+          <span>Start</span>
+        </button>
+
+        <div id="taskbar-apps" class="taskbar-apps" aria-label="Running applications"></div>
+
+        <div class="taskbar-tray" aria-label="System tray">
+          <img src="./assets/icons/tray-net.svg" alt="Network status" class="tray-icon" />
+          <img src="./assets/icons/tray-vol.svg" alt="Volume status" class="tray-icon" />
+          <time id="taskbar-clock" class="taskbar-clock" aria-live="polite"></time>
+        </div>
+      </footer>
+    </div>
+
+    <div id="crt-overlay" aria-hidden="true"></div>
+
+    <template id="window-template">
+      <section class="window" role="dialog" tabindex="0" aria-modal="false">
+        <header class="window-titlebar">
+          <div class="window-title-wrap">
+            <img class="window-title-icon" src="" alt="" aria-hidden="true" />
+            <h2 class="window-title"></h2>
+          </div>
+          <div class="window-controls" aria-label="Window controls">
+            <button class="window-control retro-btn" data-action="minimize" aria-label="Minimize window">_</button>
+            <button class="window-control retro-btn" data-action="maximize" aria-label="Maximize window">□</button>
+            <button class="window-control retro-btn" data-action="close" aria-label="Close window">✕</button>
+          </div>
+        </header>
+        <div class="window-content"></div>
+      </section>
+    </template>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+    <script type="module" src="./js/main.js"></script>
+  </body>
+</html>

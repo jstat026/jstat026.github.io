@@ -1,0 +1,5 @@
+# Alternative station names -> canonical station names
+# Format: alias = canonical
+
+Central (i) = Central
+N Strathfield = North Strathfield

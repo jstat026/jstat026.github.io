@@ -1,0 +1,47 @@
+{
+  "course": "Mathematical Statistics 1",
+  "topics": [
+    {
+      "id": "sufficiency",
+      "label": "Sufficiency and Exponential Families",
+      "title": "Sufficiency and Exponential Families",
+      "file": "./assets/notes/mathstat301/topics/sufficiency.md"
+    },
+    {
+      "id": "completeness",
+      "label": "Minimal Sufficiency and Completeness",
+      "title": "Minimal Sufficiency and Completeness",
+      "file": "./assets/notes/mathstat301/topics/completeness.md"
+    },
+    {
+      "id": "bayes-minimax",
+      "label": "Bayes and Minimax Estimators",
+      "title": "Bayes and Minimax Estimators",
+      "file": "./assets/notes/mathstat301/topics/bayes-minimax.md"
+    },
+    {
+      "id": "james-steins",
+      "label": "James-Stein Estimator",
+      "title": "James-Stein Estimator",
+      "file": "./assets/notes/mathstat301/topics/james-steins.md"
+    },
+    {
+      "id": "nonparametric",
+      "label": "Nonparametric Estimation",
+      "title": "Nonparametric Estimation",
+      "file": "./assets/notes/mathstat301/topics/nonparametric.md"
+    },
+    {
+      "id": "hypothesis-testing",
+      "label": "Hypothesis Testing",
+      "title": "Hypothesis Testing",
+      "file": "./assets/notes/mathstat301/topics/hypothesis-testing.md"
+    },
+    {
+      "id": "le-cam",
+      "label": "Le Cam's Method",
+      "title": "Le Cam's Method",
+      "file": "./assets/notes/mathstat301/topics/le-cam.md"
+    }
+  ]
+}

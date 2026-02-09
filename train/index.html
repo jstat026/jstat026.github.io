@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sydney Trains PID</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="pid" role="img" aria-label="Sydney Trains passenger information display">
+      <header class="pid__top">
+        <div class="pid__title" data-bind="title">Next service</div>
+        <div class="pid__timeblock">
+          <span class="pid__time-label">Time now</span>
+          <span class="pid__time" data-bind="time">23:23:55</span>
+        </div>
+      </header>
+
+      <section class="pid__summary">
+        <div class="pid__line-badge">
+          <span class="pid__line-text" data-bind="line">T1</span>
+          <img class="pid__line-icon" src="tfnsw_t.svg" alt="" aria-hidden="true" />
+        </div>
+        <div class="pid__destination">
+          <div class="pid__destination-main" data-bind="destination">Penrith</div>
+          <div class="pid__destination-via" data-bind="via">via Parramatta</div>
+        </div>
+        <div class="pid__platform">
+          <div class="pid__platform-label">Platform</div>
+          <div class="pid__platform-number" data-bind="platform">18</div>
+        </div>
+      </section>
+
+      <div class="pid__capacity" data-capacity></div>
+
+      <section class="pid__details">
+        <div class="pid__stops-window">
+          <ul class="pid__stops" data-bind="stops">
+            <li>Blacktown</li>
+            <li>Doonside</li>
+            <li>Rooty Hill</li>
+            <li>Mt Druitt</li>
+            <li>St Marys</li>
+            <li>Werrington</li>
+          </ul>
+        </div>
+        <div class="pid__meta">
+          <div class="pid__tags">
+            <div class="pid__tag" data-bind="cars">8 cars</div>
+            <div class="pid__tag" data-bind="stopsType">Limited Stops</div>
+          </div>
+          <div class="pid__depart">
+            <div class="pid__depart-label">Departs</div>
+            <div class="pid__depart-time" data-bind="departs">2 min</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="pid__actions">
+      <div class="pid__announcement" aria-live="polite" aria-atomic="true">
+        <span class="pid__announcement-text"></span>
+        <button class="pid__announce" type="button">Play announcement</button>
+      </div>
+    </div>
+
+    <aside class="pid__controls" id="pid-controls" aria-hidden="false">
+      <div class="pid__controls-header"></div>
+      <form class="pid__controls-form">
+        <fieldset class="pid__controls-fieldset pid__controls-fieldset--service">
+          <legend>Service</legend>
+          <div class="pid__controls-service-columns">
+            <div class="pid__controls-service-left">
+              <label class="pid__controls-label">
+                Line
+                <select class="pid__controls-input" data-key="line">
+                  <option value="T1">T1</option>
+                  <option value="T2">T2</option>
+                  <option value="T3">T3</option>
+                  <option value="T4">T4</option>
+                  <option value="T5">T5</option>
+                  <option value="T6">T6</option>
+                  <option value="T7">T7</option>
+                  <option value="T8">T8</option>
+                  <option value="T9">T9</option>
+                  <option value="Intercity">Intercity</option>
+                  <option value="Regional">Regional</option>
+                </select>
+              </label>
+              <label class="pid__controls-label">
+                Destination
+                <input class="pid__controls-input" type="text" data-key="destination" />
+              </label>
+              <label class="pid__controls-label">
+                Via
+                <input class="pid__controls-input" type="text" data-key="via" />
+              </label>
+              <label class="pid__controls-label">
+                Platform
+                <select class="pid__controls-input" data-key="platform">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                  <option value="7">7</option>
+                  <option value="8">8</option>
+                  <option value="9">9</option>
+                  <option value="10">10</option>
+                  <option value="11">11</option>
+                  <option value="12">12</option>
+                  <option value="13">13</option>
+                  <option value="14">14</option>
+                  <option value="15">15</option>
+                  <option value="16">16</option>
+                  <option value="17">17</option>
+                  <option value="18">18</option>
+                  <option value="19">19</option>
+                  <option value="20">20</option>
+                  <option value="21">21</option>
+                  <option value="22">22</option>
+                  <option value="23">23</option>
+                  <option value="24">24</option>
+                  <option value="25">25</option>
+                </select>
+                <span class="pid__controls-help">1-25</span>
+              </label>
+              <label class="pid__controls-label">
+                Cars
+                <select class="pid__controls-input" data-key="carsCount">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                  <option value="7">7</option>
+                  <option value="8">8</option>
+                  <option value="9">9</option>
+                  <option value="10">10</option>
+                </select>
+              </label>
+              <label class="pid__controls-label">
+                Stopping Pattern
+                <input class="pid__controls-input" type="text" data-key="stopsType" />
+              </label>
+              <label class="pid__controls-label">
+                Departure Time (e.g. 10:12pm)
+                <input class="pid__controls-input" type="text" data-key="departsTime" />
+                <span class="pid__controls-help">24h or am/pm</span>
+              </label>
+              <label class="pid__controls-label">
+                PA Effect
+                <select class="pid__controls-input" data-key="paEffect">
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                  <option value="room">Room</option>
+                  <option value="outdoor">Outdoor</option>
+                </select>
+                <span class="pid__controls-help">Off / PA / Room / Outdoor</span>
+              </label>
+            </div>
+            <div class="pid__controls-service-right">
+              <label class="pid__controls-label">
+                Stop Templates
+                <select class="pid__controls-input" data-template-select>
+                  <option value="">Select a template</option>
+                </select>
+                <span class="pid__controls-help">Loads line, stops, cars, etc.</span>
+              </label>
+              <label class="pid__controls-label">
+                Stops (one per line)
+                <textarea class="pid__controls-textarea" data-key="stops" data-type="list"></textarea>
+              </label>
+              <div class="pid__controls-capacity" data-capacity-controls></div>
+            </div>
+          </div>
+        </fieldset>
+      </form>
+    </aside>
+
+    <script src="script.js"></script>
+  </body>
+</html>

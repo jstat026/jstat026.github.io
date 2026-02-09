@@ -1,0 +1,214 @@
+# Stop templates for the PID editor.
+
+[Sutherland to Central (i) via Sydenham]
+line: T4
+via: Sydenham
+platform: 2
+cars: 8
+Jannali
+Como
+Oatley
+Mortdale
+Penshurst
+Hurstville
+Allawah
+Carlton
+Kogarah
+Rockdale
+Banksia
+Arncliffe
+Wolli Creek
+Tempe
+Sydenham
+St Peters
+Erskineville
+Redfern
+Central (i)
+
+[Central to Berowra via Gordon]
+line: T1
+via: Gordon
+platform: 16
+cars: 8
+Town Hall
+Wynyard
+Milsons Point
+North Sydney
+Waverton
+Wollstonecraft
+St Leonards
+Artarmon
+Chatswood
+Roseville
+Lindfield
+Killara
+Gordon
+Pymble
+Turramurra
+Warrawee
+Wahroonga
+Waitara
+Hornsby
+Asquith
+Mount Colah
+Mount Kuring-gai
+Berowra
+
+[Lindfield to Olympic Park via Central]
+line: T7
+via: Central
+platform: 2
+cars: 8
+Roseville
+Chatswood
+Artarmon
+St Leonards
+Wollstonecraft
+Waverton
+North Sydney
+Milsons Point
+Wynyard
+Town Hall
+Central
+Redfern
+Strathfield
+Olympic Park
+
+[Canberra to Central (i)]
+line: Regional
+platform: 1
+cars: 3
+Queanbeyan
+Bungendore
+Tarago
+Goulburn
+Bundanoon
+Moss Vale
+Bowral
+Mittagong
+Campbelltown
+Central (i)
+
+[Central (i) to Brisbane]
+line: Regional
+platform: 5
+cars: 7
+Broadmeadow
+Maitland
+Dungog
+Gloucester
+Wingham
+Taree
+Kendall
+Wauchope
+Kempsey
+Macksville
+Urunga
+Sawtell
+Coffs Harbour
+Grafton
+Casino
+Brisbane
+
+[Chatswood to Richmond via Central]
+line: T1
+via: Central
+platform: 1
+cars: 8
+Artarmon
+St Leonards
+Wollstonecraft
+Waverton
+North Sydney
+Milsons Point
+Wynyard
+Town Hall
+Central
+Redfern
+Strathfield
+Lidcombe
+Parramatta
+Westmead
+Wentworthville
+Pendle Hill
+Toongabbie
+Seven Hills
+Blacktown
+Marayong
+Quakers Hill
+Schofields
+Riverstone
+Vineyard
+Mulgrave
+Windsor
+Clarendon
+East Richmond
+Richmond
+
+[St James to Liverpool via Bankstown]
+line: T3
+destination: Liverpool
+via: Bankstown
+platform: 1
+cars: 8
+Circular Quay
+Wynyard
+Town Hall
+Central
+Redfern
+Erskineville
+St Peters
+Sydenham
+Marrickville
+Dulwich Hill
+Hurlstone Park
+Canterbury
+Campsie
+Belmore
+Lakemba
+Wiley Park
+Punchbowl
+Bankstown
+Yagoona
+Birrong
+Sefton
+Chester Hill
+Leightonfield
+Villawood
+Carramar
+Cabramatta
+Warwick Farm
+Liverpool
+
+[Edmondson Park to City Circle vs Town Hall]
+line: T2
+destination: City Circle
+via: Town Hall
+platform: 1
+cars: 8
+Glenfield
+Casula
+Liverpool
+Warwick Farm
+Cabramatta
+Canley Vale
+Fairfield
+Yennora
+Guildford
+Merrylands
+Granville
+Clyde
+Auburn
+Lidcombe
+Flemington
+Strathfield
+Burwood
+Ashfield
+Newtown
+Redfern
+Central
+Town Hall
+Wynyard
+Circular Quay
+St James
+Museum
