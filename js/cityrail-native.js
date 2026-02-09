@@ -54,15 +54,32 @@ const defaultBerowraStops = [
   "Berowra",
 ];
 
+const defaultOlympicParkStops = [
+  "Roseville",
+  "Chatswood",
+  "Artarmon",
+  "St Leonards",
+  "Wollstonecraft",
+  "Waverton",
+  "North Sydney",
+  "Milsons Point",
+  "Wynyard",
+  "Town Hall",
+  "Central",
+  "Redfern",
+  "Strathfield",
+  "Olympic Park",
+];
+
 const fallbackTemplates = [
   {
-    name: "Central to Berowra via Gordon",
-    line: "T1",
-    destination: "Berowra",
-    via: "via Gordon",
-    platform: "16",
+    name: "Olympic Park via Central",
+    line: "T7",
+    destination: "Olympic Park",
+    via: "via Central",
+    platform: "2",
     carsCount: "8",
-    stops: [...defaultBerowraStops],
+    stops: [...defaultOlympicParkStops],
   },
   {
     name: "T4 to Cronulla all stations",
@@ -85,16 +102,16 @@ const fallbackTemplates = [
 ];
 
 const defaultConfig = {
-  line: "T1",
-  destination: "Berowra",
-  via: "via Gordon",
-  platform: "16",
+  line: "T7",
+  destination: "Olympic Park",
+  via: "via Central",
+  platform: "2",
   carsCount: 8,
   capacities: ["low", "low", "medium", "medium", "low", "low", "low", "low"],
   stopsType: "All Stops",
   departsTime: "10:12pm",
   paEffect: "off",
-  stops: [...defaultBerowraStops],
+  stops: [...defaultOlympicParkStops],
 };
 
 let audioContext = null;
@@ -177,6 +194,26 @@ function isLegacyHornsbyDefault(config) {
   );
 }
 
+function isPreviousBerowraDefault(config) {
+  if (!config || typeof config !== "object") {
+    return false;
+  }
+
+  const stops = Array.isArray(config.stops)
+    ? config.stops.map(normalizeSimpleStationName)
+    : [];
+  const previousStops = defaultBerowraStops.map(normalizeSimpleStationName);
+
+  return (
+    String(config.line || "").toUpperCase() === "T1" &&
+    normalizeSimpleStationName(config.destination) === "berowra" &&
+    normalizeSimpleStationName(config.via) === "via gordon" &&
+    String(config.platform || "").trim() === "16" &&
+    Number(config.carsCount) === 8 &&
+    arraysEqual(stops, previousStops)
+  );
+}
+
 function loadConfig() {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -184,7 +221,7 @@ function loadConfig() {
       return clone(defaultConfig);
     }
     const parsed = normalizeConfig(JSON.parse(raw));
-    if (isLegacyHornsbyDefault(parsed)) {
+    if (isLegacyHornsbyDefault(parsed) || isPreviousBerowraDefault(parsed)) {
       return clone(defaultConfig);
     }
     return parsed;
