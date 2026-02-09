@@ -291,10 +291,49 @@ select {
 .window-control {
   width: 22px;
   height: 20px;
-  font-size: 0.75rem;
-  line-height: 1;
+  position: relative;
+  font-size: 0;
+  line-height: 0;
   display: grid;
   place-items: center;
+}
+
+.window-control::before,
+.window-control::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: #111;
+  transform: translate(-50%, -50%);
+}
+
+.window-control[data-action="minimize"]::before {
+  top: 75%;
+  width: 12px;
+  height: 2px;
+}
+
+.window-control[data-action="maximize"]::before {
+  width: 12px;
+  height: 10px;
+  border: 0;
+  box-shadow: inset 0 0 0 1.5px #111;
+  background: linear-gradient(#111, #111) top center / 100% 3px no-repeat;
+}
+
+.window-control[data-action="close"]::before,
+.window-control[data-action="close"]::after {
+  width: 16px;
+  height: 2px;
+}
+
+.window-control[data-action="close"]::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.window-control[data-action="close"]::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .window-control[disabled],
@@ -304,6 +343,21 @@ select {
   border-color: #d7d7d7 #7c7c7c #7c7c7c #d7d7d7;
   text-shadow: 1px 1px 0 #dcdcdc;
   pointer-events: none;
+}
+
+.window-control[disabled]::before,
+.window-control[disabled]::after,
+.window-control.is-disabled::before,
+.window-control.is-disabled::after {
+  background: #6a6a6a;
+  border-color: #8a8a8a;
+  box-shadow: none;
+}
+
+.window-control[disabled][data-action="maximize"]::before,
+.window-control.is-disabled[data-action="maximize"]::before {
+  background: linear-gradient(#6a6a6a, #6a6a6a) top center / 100% 3px no-repeat;
+  box-shadow: inset 0 0 0 1.5px #6a6a6a;
 }
 
 .window-content {

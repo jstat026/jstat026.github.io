@@ -253,3 +253,7 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
     - Added `minimizeOtherOpenWindows(exceptId)` and `enforceSingleOpenWindowOnMobile()` helpers.
     - On mobile, opening/restoring/focusing a window auto-minimizes every other open window.
     - Also enforces the rule when applying session state and when switching into mobile viewport mode.
+- UI polish (requested): refined titlebar control icons in `/Users/tt021/Desktop/web2/css/style.css`.
+  - Replaced text glyph rendering with centered CSS-drawn shapes for minimize/maximize/close.
+  - Increased stroke thickness for all three controls.
+  - Enlarged/centered maximize square and centered close `X`.
