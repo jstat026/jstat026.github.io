@@ -316,3 +316,15 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
   - Validation:
     - Mobile viewport hit-test (`390x844`) confirms `elementFromPoint` at center of each icon (including second-row `music`) resolves to that icon.
     - Screenshot: `/Users/tt021/Desktop/web2/output/mobile-icon-hit-check.png`.
+- Window drag UX fix (requested): prevent accidental text highlighting while dragging windows.
+  - Updated `/Users/tt021/Desktop/web2/js/window-manager.js`:
+    - Added drag selection lock helper `setDragSelectionLock(enabled)` with body class toggle (`is-window-dragging`) and selection clear.
+    - Added lock ref-count (`dragSelectionLockCount`) for safe release on all drag-end paths.
+    - Hardened drag start (`initDrag`): left button only, `event.preventDefault()`, enable lock on pointerdown.
+    - Drag move now calls `event.preventDefault()` while dragging.
+    - Added robust cleanup for pointerup/pointercancel/window blur and ensured lock release in all cases.
+  - Updated `/Users/tt021/Desktop/web2/css/style.css`:
+    - Added `body.is-window-dragging` guard to force `user-select: none` and set cursor to `move` during active drag only.
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/window-manager.js` passed.
+  - Browser automation confirms lock class toggles correctly (`afterDown: true`, `afterCancel: false`).

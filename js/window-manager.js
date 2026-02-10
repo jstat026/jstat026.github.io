@@ -17,9 +17,24 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
   let activeWindowId = null;
   let zIndexCounter = 30;
   let wasMobile = mobileQuery.matches;
+  let dragSelectionLockCount = 0;
 
   function isMobile() {
     return mobileQuery.matches;
+  }
+
+  function setDragSelectionLock(enabled) {
+    if (enabled) {
+      dragSelectionLockCount += 1;
+    } else {
+      dragSelectionLockCount = Math.max(0, dragSelectionLockCount - 1);
+    }
+
+    document.body.classList.toggle("is-window-dragging", dragSelectionLockCount > 0);
+
+    if (enabled) {
+      window.getSelection?.()?.removeAllRanges();
+    }
   }
 
   function emit(action, id) {
@@ -617,6 +632,19 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     let targetX = 0;
     let targetY = 0;
 
+    function stopDragInteraction() {
+      if (!dragging) {
+        return;
+      }
+
+      dragging = false;
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+      window.removeEventListener("blur", onWindowBlur);
+      setDragSelectionLock(false);
+    }
+
     function frame() {
       const state = states.get(id);
       if (!state) {
@@ -642,6 +670,7 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       if (!dragging) {
         return;
       }
+      event.preventDefault();
 
       const state = states.get(id);
       if (!state) {
@@ -664,10 +693,7 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       if (!dragging) {
         return;
       }
-
-      dragging = false;
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
+      stopDragInteraction();
 
       const state = states.get(id);
       if (!state) {
@@ -681,9 +707,21 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       emit("move", id);
     }
 
+    function onPointerCancel() {
+      stopDragInteraction();
+    }
+
+    function onWindowBlur() {
+      stopDragInteraction();
+    }
+
     handleEl.addEventListener("pointerdown", (event) => {
       const state = states.get(id);
       if (!state || isMobile() || state.isMaximized) {
+        return;
+      }
+
+      if (event.button !== 0) {
         return;
       }
 
@@ -691,6 +729,8 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
         return;
       }
 
+      event.preventDefault();
+      setDragSelectionLock(true);
       dragging = true;
       focusWindow(id);
 
@@ -703,7 +743,9 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       targetY = state.y;
 
       window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", onPointerUp, { once: true });
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerCancel);
+      window.addEventListener("blur", onWindowBlur);
     });
   }
 

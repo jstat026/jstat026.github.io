@@ -79,6 +79,16 @@ body {
   place-items: center;
 }
 
+body.is-window-dragging,
+body.is-window-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+body.is-window-dragging {
+  cursor: move;
+}
+
 body::before,
 body::after {
   content: "";
