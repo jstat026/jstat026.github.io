@@ -151,17 +151,8 @@ select {
   height: calc(100% / var(--os-ui-scale));
   max-width: 100%;
   max-height: 100%;
-  background:
-    radial-gradient(circle at 22% 22%, rgba(255, 255, 255, 0.055), transparent 32%),
-    radial-gradient(circle at 78% 70%, rgba(255, 255, 255, 0.045), transparent 28%),
-    repeating-linear-gradient(
-      0deg,
-      var(--desktop-teal),
-      var(--desktop-teal) 6px,
-      var(--desktop-teal-dark) 6px,
-      var(--desktop-teal-dark) 12px
-    );
-  filter: saturate(0.82) contrast(0.92) brightness(1.04);
+  background: #018281;
+  filter: none;
   transform: perspective(1500px)
     scale(
       calc(var(--shell-base-scale-x) * var(--os-ui-scale)),
