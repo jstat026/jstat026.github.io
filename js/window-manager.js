@@ -660,26 +660,35 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       return;
     }
 
+    const dragStartThresholdPx = 4;
+    let pointerDown = false;
     let dragging = false;
+    let selectionLocked = false;
     let rafId = 0;
     let startOffsetX = 0;
     let startOffsetY = 0;
+    let pointerDownX = 0;
+    let pointerDownY = 0;
     let currentX = 0;
     let currentY = 0;
     let targetX = 0;
     let targetY = 0;
 
     function stopDragInteraction() {
-      if (!dragging) {
+      if (!pointerDown && !dragging) {
         return;
       }
 
+      pointerDown = false;
       dragging = false;
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerCancel);
       window.removeEventListener("blur", onWindowBlur);
-      setDragSelectionLock(false);
+      if (selectionLocked) {
+        setDragSelectionLock(false);
+        selectionLocked = false;
+      }
     }
 
     function frame() {
@@ -704,15 +713,26 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     }
 
     function onPointerMove(event) {
-      if (!dragging) {
+      if (!pointerDown) {
         return;
       }
-      event.preventDefault();
 
       const state = states.get(id);
       if (!state) {
         return;
       }
+
+      if (!dragging) {
+        const dx = event.clientX - pointerDownX;
+        const dy = event.clientY - pointerDownY;
+        if (Math.hypot(dx, dy) < dragStartThresholdPx) {
+          return;
+        }
+        dragging = true;
+        setDragSelectionLock(true);
+        selectionLocked = true;
+      }
+      event.preventDefault();
 
       targetX = event.clientX - startOffsetX;
       targetY = clampWindowY(state, event.clientY - startOffsetY);
@@ -723,10 +743,14 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     }
 
     async function onPointerUp() {
-      if (!dragging) {
+      if (!pointerDown) {
         return;
       }
+      const wasDragging = dragging;
       stopDragInteraction();
+      if (!wasDragging) {
+        return;
+      }
 
       const state = states.get(id);
       if (!state) {
@@ -763,11 +787,13 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       }
 
       event.preventDefault();
-      setDragSelectionLock(true);
-      dragging = true;
+      pointerDown = true;
+      dragging = false;
       focusWindow(id);
 
       const rect = state.element.getBoundingClientRect();
+      pointerDownX = event.clientX;
+      pointerDownY = event.clientY;
       startOffsetX = event.clientX - rect.left;
       startOffsetY = event.clientY - rect.top;
       currentX = state.x;
