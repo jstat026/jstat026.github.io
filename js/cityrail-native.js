@@ -118,6 +118,7 @@ const defaultConfig = {
 
 let audioContext = null;
 const audioBufferCache = new Map();
+const cleanupByRoot = new WeakMap();
 
 let allStationsGroups = [];
 let allStationsPromise = null;
@@ -1577,4 +1578,39 @@ export function initCityRailNativeApp(root) {
   });
 
   render(state);
+
+  const cleanup = () => {
+    stopAnnouncement(state);
+
+    if (state.stopRafId) {
+      cancelAnimationFrame(state.stopRafId);
+      state.stopRafId = 0;
+    }
+
+    if (state.tickerId) {
+      clearInterval(state.tickerId);
+      state.tickerId = 0;
+    }
+
+    if (state.pidResizeObserver) {
+      state.pidResizeObserver.disconnect();
+      state.pidResizeObserver = null;
+    }
+
+    document.removeEventListener("window:open", rerenderStopsOnShow);
+    document.removeEventListener("window:restore", rerenderStopsOnShow);
+    document.removeEventListener("window:resize", updatePidScaleOnWindowResize);
+
+    root.dataset.cityrailMounted = "false";
+    cleanupByRoot.delete(root);
+  };
+
+  cleanupByRoot.set(root, cleanup);
+}
+
+export function destroyCityRailNativeApp(root) {
+  if (!root) {
+    return;
+  }
+  cleanupByRoot.get(root)?.();
 }

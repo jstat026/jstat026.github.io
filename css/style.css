@@ -159,7 +159,7 @@ select {
       calc(var(--shell-base-scale-y) * var(--os-ui-scale))
     );
   transform-origin: center center;
-  border-radius: 14px;
+  border-radius: 0;
   overflow: hidden;
 }
 

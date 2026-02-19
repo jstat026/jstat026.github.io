@@ -114,20 +114,6 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     activeWindowId = keep.id;
   }
 
-  function clampToLayer(state, x, y, w = state.w, h = state.h) {
-    if (layerEl.clientWidth <= 0 || layerEl.clientHeight <= 0) {
-      return { x, y };
-    }
-
-    const maxX = Math.max(0, layerEl.clientWidth - w);
-    const maxY = Math.max(0, layerEl.clientHeight - h);
-
-    return {
-      x: Math.min(Math.max(0, x), maxX),
-      y: Math.min(Math.max(0, y), maxY),
-    };
-  }
-
   function getMinSize(state) {
     return {
       minW: state.fixedSize ? state.defaultSize.w : 320,
@@ -135,7 +121,7 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     };
   }
 
-  function getAspectConstraint(state, x = state.x, y = state.y) {
+  function getAspectConstraint(state, x = state.x, y = state.y, { constrainToViewport = true } = {}) {
     const ratio = Number(state.resizeAspectRatio);
     if (!Number.isFinite(ratio) || ratio <= 0) {
       return null;
@@ -149,21 +135,32 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       minW = minH * ratio;
     }
 
-    const rawMaxW = Math.max(minW, layerEl.clientWidth - x);
-    const rawMaxH = Math.max(minH, layerEl.clientHeight - y);
+    let maxW = Number.POSITIVE_INFINITY;
+    let maxH = Number.POSITIVE_INFINITY;
 
-    let maxW = rawMaxW;
-    let maxH = maxW / ratio;
-    if (maxH > rawMaxH) {
-      maxH = rawMaxH;
-      maxW = maxH * ratio;
+    if (constrainToViewport) {
+      const rawMaxW = Math.max(minW, layerEl.clientWidth - x);
+      const rawMaxH = Math.max(minH, layerEl.clientHeight - y);
+
+      maxW = rawMaxW;
+      maxH = maxW / ratio;
+      if (maxH > rawMaxH) {
+        maxH = rawMaxH;
+        maxW = maxH * ratio;
+      }
     }
 
     return { ratio, minW, minH, maxW, maxH };
   }
 
-  function applyAspectSize(state, preferredW, x = state.x, y = state.y) {
-    const constraint = getAspectConstraint(state, x, y);
+  function applyAspectSize(
+    state,
+    preferredW,
+    x = state.x,
+    y = state.y,
+    { constrainToViewport = true } = {}
+  ) {
+    const constraint = getAspectConstraint(state, x, y, { constrainToViewport });
     if (!constraint) {
       return false;
     }
@@ -172,6 +169,14 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     state.w = nextW;
     state.h = nextW / constraint.ratio;
     return true;
+  }
+
+  function getMaxWindowY(state) {
+    return Math.max(0, layerEl.clientHeight - state.h);
+  }
+
+  function clampWindowY(state, y) {
+    return Math.min(y, getMaxWindowY(state));
   }
 
   function applyBounds(state) {
@@ -190,20 +195,48 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       state.restoreBounds = null;
     }
 
-    if (!applyAspectSize(state, state.w)) {
+    if (!applyAspectSize(state, state.w, 0, 0, { constrainToViewport: true })) {
       const { minW, minH } = getMinSize(state);
       state.w = Math.max(minW, state.w);
       state.h = Math.max(minH, state.h);
+      state.w = Math.min(state.w, layerEl.clientWidth);
+      state.h = Math.min(state.h, layerEl.clientHeight);
     }
 
-    const clamped = clampToLayer(state, state.x, state.y, state.w, state.h);
-    state.x = clamped.x;
-    state.y = clamped.y;
-
+    state.y = clampWindowY(state, state.y);
     state.element.style.left = `${Math.round(state.x)}px`;
     state.element.style.top = `${Math.round(state.y)}px`;
     state.element.style.width = `${Math.round(state.w)}px`;
     state.element.style.height = `${Math.round(state.h)}px`;
+  }
+
+  function ensureWindowReachable(state) {
+    if (isMobile() || state.isMaximized) {
+      return;
+    }
+    if (layerEl.clientWidth <= 0 || layerEl.clientHeight <= 0) {
+      return;
+    }
+
+    const minVisibleX = 120;
+    const minVisibleTitle = 34;
+
+    const fullyOutsideX =
+      state.x + state.w <= 0 || state.x >= layerEl.clientWidth;
+    const fullyOutsideY =
+      state.y + minVisibleTitle <= 0 || state.y >= layerEl.clientHeight;
+
+    if (!fullyOutsideX && !fullyOutsideY) {
+      return;
+    }
+
+    const minX = -state.w + minVisibleX;
+    const maxX = layerEl.clientWidth - minVisibleX;
+    const minY = 0;
+    const maxY = getMaxWindowY(state);
+
+    state.x = Math.min(Math.max(state.x, minX), maxX);
+    state.y = Math.min(Math.max(state.y, minY), maxY);
   }
 
   function syncViewportMode() {
@@ -460,6 +493,8 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     }
 
     minimizeOtherOpenWindows(id);
+    ensureWindowReachable(state);
+    applyBounds(state);
 
     zIndexCounter += 1;
     state.zIndex = zIndexCounter;
@@ -500,6 +535,7 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       state.h = state.defaultSize.h;
     }
 
+    ensureWindowReachable(state);
     applyBounds(state);
     state.element.hidden = false;
     state.element.style.display = "flex";
@@ -574,6 +610,7 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
     state.element.hidden = false;
     state.element.style.display = "flex";
 
+    ensureWindowReachable(state);
     applyBounds(state);
     focusWindow(id);
 
@@ -677,12 +714,8 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
         return;
       }
 
-      const proposedX = event.clientX - startOffsetX;
-      const proposedY = event.clientY - startOffsetY;
-      const clamped = clampToLayer(state, proposedX, proposedY);
-
-      targetX = clamped.x;
-      targetY = clamped.y;
+      targetX = event.clientX - startOffsetX;
+      targetY = clampWindowY(state, event.clientY - startOffsetY);
 
       if (!rafId) {
         rafId = requestAnimationFrame(frame);
@@ -701,7 +734,7 @@ export function createWindowManager({ layerEl, mobileBreakpoint = 768, animation
       }
 
       state.x = targetX;
-      state.y = targetY;
+      state.y = clampWindowY(state, targetY);
       applyBounds(state);
       await animation.animateDragSettle(state.element);
       emit("move", id);

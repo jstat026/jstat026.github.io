@@ -1,6 +1,6 @@
 import * as animations from "./animations.js";
 import { createWindowManager } from "./window-manager.js";
-import { createCityRailNativeApp, initCityRailNativeApp } from "./cityrail-native.js";
+import { createCityRailNativeApp, destroyCityRailNativeApp, initCityRailNativeApp } from "./cityrail-native.js";
 
 const portfolioData = {
   about: {
@@ -223,10 +223,10 @@ const windowMeta = [
     title: "CityRail Announcer",
     icon: "./assets/icons/cityrail.svg",
     defaultPos: { x: 168, y: 64 },
-    defaultSize: { w: 1320, h: 720 },
+    defaultSize: { w: 1045, h: 570 },
     sectionKey: "cityrail",
     canResize: true,
-    resizeAspectRatio: 1320 / 720,
+    resizeAspectRatio: 1045 / 570,
     canMaximize: false,
     fixedSize: false,
   },
@@ -275,6 +275,7 @@ const windowMeta = [
 
 const launchableWindowMeta = windowMeta.filter((meta) => !meta.isHidden);
 const launchableWindowIds = new Set(launchableWindowMeta.map((meta) => meta.id));
+const launchableWindowMetaById = new Map(launchableWindowMeta.map((meta) => [meta.id, meta]));
 
 const dom = {
   desktop: document.getElementById("desktop"),
@@ -290,6 +291,9 @@ const dom = {
 const iconMap = new Map();
 const taskButtonMap = new Map();
 const scrollCleanupMap = new Map();
+const windowContentHostMap = new Map();
+const windowContentCleanupMap = new Map();
+const mountedWindowSections = new Set();
 const stat301TopicContentCache = new Map();
 
 const WINDOW_SESSION_STORAGE_KEY = "academic-os.windowSession.v1";
@@ -599,6 +603,9 @@ function buildCityRailSection() {
   nativeAppEl.classList.add("reveal-item");
   wrapper.appendChild(nativeAppEl);
   initCityRailNativeApp(nativeAppEl);
+  wrapper.cleanup = () => {
+    destroyCityRailNativeApp(nativeAppEl);
+  };
   return wrapper;
 }
 
@@ -1013,21 +1020,24 @@ function buildFlappySection() {
     flap();
   }
 
-  wrapper.addEventListener("pointerdown", () => {
+  function handleWrapperPointerDown() {
     wrapper.focus();
-  });
+  }
 
-  stageEl.addEventListener("pointerdown", (event) => {
+  function handleStagePointerDown(event) {
     if (event.button !== 0) {
       return;
     }
     flap();
-  });
+  }
+
+  wrapper.addEventListener("pointerdown", handleWrapperPointerDown);
+  stageEl.addEventListener("pointerdown", handleStagePointerDown);
 
   document.addEventListener("keydown", handleKeydown);
   window.addEventListener("resize", syncCanvasSize, { passive: true });
 
-  window.render_game_to_text = () =>
+  const renderGameToText = () =>
     JSON.stringify({
       mode: state.mode,
       score: state.score,
@@ -1053,6 +1063,7 @@ function buildFlappySection() {
       })),
       controls: "Press Space to jump",
     });
+  window.render_game_to_text = renderGameToText;
 
   window.advanceTime = advanceDeterministic;
 
@@ -1060,6 +1071,23 @@ function buildFlappySection() {
   syncCanvasSize();
   resetRound();
   state.rafId = requestAnimationFrame(loop);
+
+  wrapper.cleanup = () => {
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
+      state.rafId = 0;
+    }
+    document.removeEventListener("keydown", handleKeydown);
+    window.removeEventListener("resize", syncCanvasSize);
+    wrapper.removeEventListener("pointerdown", handleWrapperPointerDown);
+    stageEl.removeEventListener("pointerdown", handleStagePointerDown);
+    if (window.render_game_to_text === renderGameToText) {
+      delete window.render_game_to_text;
+    }
+    if (window.advanceTime === advanceDeterministic) {
+      delete window.advanceTime;
+    }
+  };
 
   return wrapper;
 }
@@ -1243,6 +1271,13 @@ function buildMusicSection() {
 
   syncSourceLabel(defaultTrack);
   updateProgressUI();
+
+  wrapper.cleanup = () => {
+    audioEl.pause();
+    audioEl.removeAttribute("src");
+    audioEl.load();
+  };
+
   return wrapper;
 }
 
@@ -1672,6 +1707,13 @@ function restoreWindowSessionIfAny() {
 
   isApplyingWindowSession = true;
   try {
+    if (Array.isArray(snapshot.windows)) {
+      snapshot.windows.forEach((item) => {
+        if (item?.isOpen && typeof item.id === "string") {
+          ensureWindowContentMounted(item.id);
+        }
+      });
+    }
     manager.applySessionState(snapshot);
   } finally {
     isApplyingWindowSession = false;
@@ -1708,9 +1750,7 @@ function renderWindows() {
     const titleId = `${meta.id}-title`;
     titleText.id = titleId;
     windowEl.setAttribute("aria-labelledby", titleId);
-
-    const section = buildSection(meta.sectionKey, () => refreshScrollableEffects(meta.id, contentEl));
-    contentEl.appendChild(section);
+    windowContentHostMap.set(meta.id, contentEl);
 
     if (meta.sectionKey === "stat301") {
       contentEl.classList.add("window-content-stat301");
@@ -1744,7 +1784,7 @@ function renderWindows() {
       }
 
       if (!state.isOpen) {
-        await manager.openWindow(meta.id, iconMap.get(meta.id));
+        await openWindow(meta.id, iconMap.get(meta.id));
         return;
       }
 
@@ -1822,14 +1862,55 @@ function renderWindows() {
       }
     });
 
-    refreshScrollableEffects(meta.id, contentEl);
   });
+}
+
+function unmountWindowContent(windowId) {
+  if (!mountedWindowSections.has(windowId)) {
+    return;
+  }
+
+  const cleanup = windowContentCleanupMap.get(windowId);
+  if (typeof cleanup === "function") {
+    cleanup();
+  }
+  windowContentCleanupMap.delete(windowId);
+
+  scrollCleanupMap.get(windowId)?.();
+  scrollCleanupMap.delete(windowId);
+
+  const contentEl = windowContentHostMap.get(windowId);
+  if (contentEl) {
+    contentEl.replaceChildren();
+  }
+  mountedWindowSections.delete(windowId);
+}
+
+function ensureWindowContentMounted(windowId) {
+  if (mountedWindowSections.has(windowId)) {
+    return;
+  }
+
+  const meta = launchableWindowMetaById.get(windowId);
+  const contentEl = windowContentHostMap.get(windowId);
+  if (!meta || !contentEl) {
+    return;
+  }
+
+  const section = buildSection(meta.sectionKey, () => refreshScrollableEffects(meta.id, contentEl));
+  contentEl.appendChild(section);
+  if (typeof section.cleanup === "function") {
+    windowContentCleanupMap.set(windowId, section.cleanup);
+  }
+  mountedWindowSections.add(windowId);
+  refreshScrollableEffects(meta.id, contentEl);
 }
 
 async function openWindow(windowId, sourceEl) {
   if (!launchableWindowIds.has(windowId)) {
     return;
   }
+  ensureWindowContentMounted(windowId);
   await manager.openWindow(windowId, sourceEl);
 }
 
@@ -1853,6 +1934,16 @@ async function closeStartMenu() {
   dom.startButton.setAttribute("aria-expanded", "false");
   dom.startButton.classList.remove("is-pressed");
   await animations.animateStartMenu(dom.startMenu, false);
+}
+
+function bindWindowContentLifecycle() {
+  document.addEventListener("window:close", (event) => {
+    const windowId = event?.detail?.id;
+    if (typeof windowId !== "string") {
+      return;
+    }
+    unmountWindowContent(windowId);
+  });
 }
 
 function bindGlobalEvents() {
@@ -1899,6 +1990,7 @@ async function init() {
   renderDesktopIcons();
   renderStartMenu();
   renderWindows();
+  bindWindowContentLifecycle();
   bindWindowSessionPersistence();
   restoreWindowSessionIfAny();
   bindGlobalEvents();
