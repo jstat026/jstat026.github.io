@@ -645,7 +645,6 @@ function buildFlappySection() {
     lastTime: 0,
     rafId: 0,
     elapsed: 0,
-    cloudOffset: 0,
   };
 
   const gravity = Number(config.gravity) || 1120;
@@ -654,13 +653,6 @@ function buildFlappySection() {
   const pipeSpeed = Number(config.pipeSpeed) || 175;
   const spawnInterval = Number(config.spawnInterval) || 1.32;
   const pipeWidth = 72;
-  const cloudPattern = [
-    { x: 36, yOffset: 0, scale: 0.95 },
-    { x: 260, yOffset: -12, scale: 0.85 },
-    { x: 492, yOffset: 8, scale: 1 },
-    { x: 720, yOffset: -6, scale: 0.9 },
-  ];
-  const cloudPatternSpan = 760;
 
   function isWindowVisible() {
     const hostWindow = wrapper.closest(".window");
@@ -835,18 +827,6 @@ function buildFlappySection() {
 
   function advanceAmbience(dt) {
     state.elapsed += dt;
-    state.cloudOffset = (state.cloudOffset + dt * 22) % 100000;
-  }
-
-  function drawCloud(x, y, scale) {
-    context.fillStyle = "rgba(255, 255, 255, 0.62)";
-    context.beginPath();
-    context.arc(x, y, 16 * scale, Math.PI * 0.5, Math.PI * 1.5);
-    context.arc(x + 18 * scale, y - 12 * scale, 17 * scale, Math.PI, Math.PI * 2);
-    context.arc(x + 39 * scale, y - 4 * scale, 18 * scale, Math.PI * 1.2, Math.PI * 1.95);
-    context.arc(x + 57 * scale, y + 7 * scale, 14 * scale, Math.PI * 1.5, Math.PI * 0.5);
-    context.closePath();
-    context.fill();
   }
 
   function drawBackground() {
@@ -856,16 +836,6 @@ function buildFlappySection() {
     skyGradient.addColorStop(1, "#70bceb");
     context.fillStyle = skyGradient;
     context.fillRect(0, 0, state.width, state.height);
-
-    const cloudBaseY = Math.max(32, state.height * 0.19);
-    const cloudShift = ((state.cloudOffset % cloudPatternSpan) + cloudPatternSpan) % cloudPatternSpan;
-    const laneCount = Math.ceil((state.width + cloudPatternSpan * 2) / cloudPatternSpan);
-    for (let lane = -1; lane <= laneCount; lane += 1) {
-      const laneOffsetX = lane * cloudPatternSpan - cloudShift;
-      cloudPattern.forEach((cloud) => {
-        drawCloud(cloud.x + laneOffsetX, cloudBaseY + cloud.yOffset, cloud.scale);
-      });
-    }
 
     const horizonY = state.height - 56;
     const hillStep = 20;
@@ -1393,7 +1363,8 @@ function markdownToStatHtml(markdown) {
           title: rawTitle.trim(),
           body: rawBody.trim(),
         });
-        return token;
+        // Keep tokens isolated so split(/\n{2,}/) cannot merge them with prose blocks.
+        return `\n\n${token}\n\n`;
       }
     );
 
@@ -1423,13 +1394,47 @@ function markdownToStatHtml(markdown) {
       return;
     }
 
-    if (lines.every((line) => line.startsWith("- "))) {
-      html.push(
-        `<ul class="stat301-bullets">${lines
-          .map((line) => `<li>${toSafeHTML(line.slice(2).trim())}</li>`)
-          .join("")}</ul>`
-      );
-      return;
+    const hasBulletStart = lines.some((line) => /^\s*-\s+/.test(line));
+    if (hasBulletStart) {
+      const items = [];
+      let currentItem = "";
+      let validBulletBlock = true;
+
+      lines.forEach((line) => {
+        const bulletMatch = line.match(/^\s*-\s+(.+)$/);
+        if (bulletMatch) {
+          if (currentItem) {
+            items.push(currentItem);
+          }
+          currentItem = bulletMatch[1].trim();
+          return;
+        }
+
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return;
+        }
+
+        if (!currentItem) {
+          validBulletBlock = false;
+          return;
+        }
+
+        currentItem = `${currentItem} ${trimmed}`;
+      });
+
+      if (currentItem) {
+        items.push(currentItem);
+      }
+
+      if (validBulletBlock && items.length) {
+        html.push(
+          `<ul class="stat301-bullets">${items
+            .map((item) => `<li>${toSafeHTML(item)}</li>`)
+            .join("")}</ul>`
+        );
+        return;
+      }
     }
 
     const headingMatch = lines[0].match(/^(#{1,6})\s+(.+)$/);

@@ -42,6 +42,42 @@
       "label": "Le Cam's Method",
       "title": "Le Cam's Method",
       "file": "./assets/notes/mathstat301/topics/le-cam.md"
+    },
+    {
+      "id": "umvues",
+      "label": "UMVUEs",
+      "title": "Uniformly Minimum-Variance Unbiased Estimators",
+      "file": "./assets/notes/mathstat301/topics/umvues.md"
+    },
+    {
+      "id": "equivariant-estimators",
+      "label": "Equivariant Estimators",
+      "title": "Equivariant Estimators",
+      "file": "./assets/notes/mathstat301/topics/equivariant-estimators.md"
+    },
+    {
+      "id": "consistency-of-mle",
+      "label": "Consistency of MLE",
+      "title": "Consistency of MLE",
+      "file": "./assets/notes/mathstat301/topics/consistency-of-mle.md"
+    },
+    {
+      "id": "asymptotic-normality-of-mle",
+      "label": "Asymptotic Normality of MLE",
+      "title": "Asymptotic Normality of MLE",
+      "file": "./assets/notes/mathstat301/topics/asymptotic-normality-of-mle.md"
+    },
+    {
+      "id": "dqm",
+      "label": "DQM",
+      "title": "Differentiability in Quadratic Mean",
+      "file": "./assets/notes/mathstat301/topics/dqm.md"
+    },
+    {
+      "id": "asymptotic-efficiency",
+      "label": "Asymptotic Efficiency",
+      "title": "Asymptotic Efficiency",
+      "file": "./assets/notes/mathstat301/topics/asymptotic-efficiency.md"
     }
   ]
 }
