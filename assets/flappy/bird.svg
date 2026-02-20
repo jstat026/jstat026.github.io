@@ -1,0 +1,9 @@
+<svg width="34" height="24" viewBox="0 0 34 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g id="flappy-bird">
+    <path id="body" fill-rule="evenodd" clip-rule="evenodd" d="M6 2H22V4H26V6H28V8H30V16H28V18H26V20H22V22H6V20H4V18H2V16H0V8H2V6H4V4H6V2Z" fill="#FFD700"/>
+    <path id="beak" fill-rule="evenodd" clip-rule="evenodd" d="M22 8H32V14H28V16H22V14H20V8H22Z" fill="#FF4500"/>
+    <path id="eye" fill-rule="evenodd" clip-rule="evenodd" d="M22 4H26V8H22V4Z" fill="white"/>
+    <path id="pupil" fill-rule="evenodd" clip-rule="evenodd" d="M24 4H26V6H24V4Z" fill="black"/>
+    <path id="wing" fill-rule="evenodd" clip-rule="evenodd" d="M2 10H12V16H8V14H4V12H2V10Z" fill="white"/>
+  </g>
+</svg>

@@ -381,3 +381,55 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
 - Grass side UV orientation fix:
   - Updated `/Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js` `resolveUV()` for side faces to invert vertical mapping (`corner[1]`), so the grass-side green strip appears at the top edge.
   - Syntax check passed: `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js`.
+
+- Follow-up visual adjustments (requested):
+  - Removed Flappy sun/cloud rendering from `/Users/tt021/Desktop/web2/js/main.js`.
+  - Added horizon bushes/trees silhouette in `drawBackground()` to match the SVG scene style.
+  - Synced ground dirt-stripe scroll speed to pipe speed (`pipeSpeed`) so ground motion matches obstacle movement.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+
+- Follow-up gameplay behavior (requested):
+  - Updated Flappy game-over flow so collisions first enter a `crashing` state.
+  - In `crashing`, the bird continues falling under gravity until it reaches the ground.
+  - Once grounded, state transitions to `gameover` and shows retry overlay text.
+  - Prevented flap input during `crashing` to preserve crash animation.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+
+- Follow-up layout change (requested): make Flappy game fullscreen within `flappy.exe` window content.
+  - Updated `/Users/tt021/Desktop/web2/js/main.js` `buildFlappySection()` to render only the game stage (canvas + overlay), removing in-content heading/help/HUD chrome.
+  - Updated HUD updater to safely no-op when score/best DOM nodes are absent.
+  - Updated `/Users/tt021/Desktop/web2/css/style.css`:
+    - `.window-content.window-content-flappy` now uses `padding: 0`,
+    - `.flappy-section` gap set to `0`,
+    - `.flappy-stage` border removed so canvas fills the content area edge-to-edge.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+
+- Follow-up tuning (requested): show more ground by moving the ground band higher.
+  - Updated `/Users/tt021/Desktop/web2/js/main.js` with shared helpers:
+    - `groundBandHeight = 40`
+    - `getGroundY()` and `getFloorY()`
+  - Ground top now renders higher and is used consistently for:
+    - bird floor clamp/collision,
+    - pipe bottom segment anchoring,
+    - pipe spawn vertical range.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+
+- Follow-up performance fix (requested): reduced Flappy audio lag and frame impact.
+  - Replaced per-event `audio.cloneNode(true)` playback in `/Users/tt021/Desktop/web2/js/main.js` with reusable preallocated audio pools (`wing/point/hit/die`).
+  - Added ring-buffer pool playback (`playSfx(poolName)`) to avoid runtime allocations/GC churn during play.
+  - Kept behavior mapping unchanged:
+    - wing on Space,
+    - point on score,
+    - hit then die on crash.
+  - Added `stopAllSfx()` on cleanup and preserved crash die timeout cleanup.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+
+- Follow-up performance overhaul (requested): audio lag + frame drops in Flappy.
+  - Replaced HTMLAudio pool playback with Web Audio API buffer playback in `/Users/tt021/Desktop/web2/js/main.js`:
+    - one `AudioContext` with `latencyHint: "interactive"`,
+    - one-time fetch/decode for `wing/point/hit/die`,
+    - lightweight `AudioBufferSourceNode` playback per event.
+  - Removed per-trigger media element operations (`pause/currentTime/play`) and all per-trigger allocations from prior implementation.
+  - Added pre-scaled bird sprite cache (offscreen canvas) on image load so render loop no longer re-samples the large PNG each frame.
+  - Kept sound behavior semantics the same (wing on space, point on score, hit then die on crash).
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.

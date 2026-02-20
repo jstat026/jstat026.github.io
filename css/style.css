@@ -391,6 +391,7 @@ select {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding: 0;
   overscroll-behavior: contain;
 }
 
@@ -1099,7 +1100,7 @@ select {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   overflow: hidden;
 }
 
@@ -1122,8 +1123,7 @@ select {
   flex: 1;
   min-height: 0;
   min-width: 0;
-  border: 2px solid;
-  border-color: var(--chrome-dark) var(--chrome-light) var(--chrome-light) var(--chrome-dark);
+  border: 0;
   background: #8cc8ff;
   box-sizing: border-box;
   overflow: hidden;

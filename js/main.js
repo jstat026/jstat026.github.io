@@ -259,7 +259,7 @@ const windowMeta = [
     id: "flappy",
     exeName: "flappy.exe",
     title: "Flappy Bird",
-    icon: "./assets/icons/flappy.svg",
+    icon: "./assets/flappy/bird.png",
     defaultPos: { x: 132, y: 118 },
     defaultSize: { w: 560, h: 420 },
     sectionKey: "flappy",
@@ -651,15 +651,9 @@ function buildFlappySection() {
   wrapper.tabIndex = 0;
   wrapper.setAttribute("aria-label", "Flappy Bird game");
   wrapper.innerHTML = `
-    <h3 class="section-heading" data-parallax="0.02">flappy.exe</h3>
-    <p class="flappy-help reveal-item">Press <kbd>Space</kbd> to jump. Avoid pipes and beat your best score.</p>
-    <div class="flappy-stage reveal-item" data-flappy-stage>
+    <div class="flappy-stage" data-flappy-stage>
       <canvas class="flappy-canvas" data-flappy-canvas aria-label="Flappy Bird game canvas"></canvas>
       <p class="flappy-overlay" data-flappy-overlay></p>
-    </div>
-    <div class="flappy-hud reveal-item">
-      <span data-flappy-score>Score: 0</span>
-      <span data-flappy-best>Best: 0</span>
     </div>
   `;
 
@@ -681,7 +675,7 @@ function buildFlappySection() {
     width: 0,
     height: 0,
     mode: "ready",
-    bird: { x: 0, y: 0, vy: 0, radius: 14 },
+    bird: { x: 0, y: 0, vy: 0, radius: 14, tilt: -0.4, downTiltTimer: 0, crashTiltTimer: 0 },
     pipes: [],
     spawnTimer: 0,
     score: 0,
@@ -697,6 +691,152 @@ function buildFlappySection() {
   const pipeSpeed = Number(config.pipeSpeed) || 175;
   const spawnInterval = Number(config.spawnInterval) || 1.32;
   const pipeWidth = 72;
+  const groundBandHeight = 40;
+  const downTiltDelaySeconds = 0.3;
+  const crashTiltDelaySeconds = 0.1;
+  const birdSprite = new Image();
+  const sfxFiles = {
+    wing: "./assets/flappy/sfx_wing.wav",
+    point: "./assets/flappy/sfx_point.wav",
+    hit: "./assets/flappy/sfx_hit.wav",
+    die: "./assets/flappy/sfx_die.wav",
+  };
+  const sfxGain = {
+    wing: 0.34,
+    point: 0.32,
+    hit: 0.45,
+    die: 0.45,
+  };
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext || null;
+  let sfxContext = null;
+  let sfxInitPromise = null;
+  const sfxBuffers = new Map();
+  let pendingDieTimeoutId = 0;
+  let birdSpriteReady = false;
+  let birdRenderSprite = null;
+  birdSprite.addEventListener("load", () => {
+    birdSpriteReady = true;
+    const targetSize = Math.max(1, Math.round(state.bird.radius * 3));
+    const preScaled = document.createElement("canvas");
+    preScaled.width = targetSize;
+    preScaled.height = targetSize;
+    const preScaledContext = preScaled.getContext("2d");
+    if (preScaledContext) {
+      preScaledContext.imageSmoothingEnabled = false;
+      preScaledContext.clearRect(0, 0, targetSize, targetSize);
+      preScaledContext.drawImage(birdSprite, 0, 0, targetSize, targetSize);
+      birdRenderSprite = preScaled;
+    }
+  });
+  birdSprite.src = "./assets/flappy/bird.png";
+
+  function initSfx() {
+    if (!AudioContextCtor) {
+      return Promise.resolve();
+    }
+    if (sfxInitPromise) {
+      return sfxInitPromise;
+    }
+    try {
+      sfxContext = new AudioContextCtor({ latencyHint: "interactive" });
+    } catch {
+      sfxContext = null;
+      sfxInitPromise = Promise.resolve();
+      return sfxInitPromise;
+    }
+
+    sfxInitPromise = Promise.all(
+      Object.entries(sfxFiles).map(async ([name, path]) => {
+        try {
+          const response = await fetch(path);
+          const data = await response.arrayBuffer();
+          if (!sfxContext) {
+            return;
+          }
+          const buffer = await sfxContext.decodeAudioData(data);
+          sfxBuffers.set(name, buffer);
+        } catch {
+          // ignore per-file decode failures
+        }
+      })
+    ).catch(() => {
+      // ignore shared load failures
+    });
+    return sfxInitPromise;
+  }
+
+  function primeSfxContext() {
+    if (!sfxContext || sfxContext.state !== "suspended") {
+      return;
+    }
+    try {
+      sfxContext.resume().catch(() => {
+        // ignore resume failures
+      });
+    } catch {
+      // ignore resume failures
+    }
+  }
+
+  function playSfx(name) {
+    if (!sfxContext) {
+      return;
+    }
+    const buffer = sfxBuffers.get(name);
+    if (!buffer) {
+      return;
+    }
+    primeSfxContext();
+    try {
+      const source = sfxContext.createBufferSource();
+      source.buffer = buffer;
+      const gainNode = sfxContext.createGain();
+      gainNode.gain.value = sfxGain[name] || 0.4;
+      source.connect(gainNode);
+      gainNode.connect(sfxContext.destination);
+      source.start(0);
+    } catch {
+      // ignore audio playback failures
+    }
+  }
+
+  function clearPendingDieTimeout() {
+    if (!pendingDieTimeoutId) {
+      return;
+    }
+    window.clearTimeout(pendingDieTimeoutId);
+    pendingDieTimeoutId = 0;
+  }
+
+  function playCrashSfxSequence() {
+    clearPendingDieTimeout();
+    playSfx("hit");
+    pendingDieTimeoutId = window.setTimeout(() => {
+      pendingDieTimeoutId = 0;
+      if (state.mode === "crashing" || state.mode === "gameover") {
+        playSfx("die");
+      }
+    }, 120);
+  }
+
+  function disposeSfx() {
+    if (sfxContext) {
+      sfxContext.close().catch(() => {
+        // ignore close failures
+      });
+    }
+    sfxContext = null;
+    sfxInitPromise = null;
+    sfxBuffers.clear();
+  }
+
+  function getGroundY() {
+    return Math.max(16, state.height - groundBandHeight);
+  }
+
+  function getFloorY() {
+    return getGroundY() - state.bird.radius;
+  }
 
   function isWindowVisible() {
     const hostWindow = wrapper.closest(".window");
@@ -726,8 +866,12 @@ function buildFlappySection() {
   }
 
   function updateHud() {
-    scoreEl.textContent = `Score: ${state.score}`;
-    bestEl.textContent = `Best: ${state.best}`;
+    if (scoreEl) {
+      scoreEl.textContent = `Score: ${state.score}`;
+    }
+    if (bestEl) {
+      bestEl.textContent = `Best: ${state.best}`;
+    }
   }
 
   function syncCanvasSize() {
@@ -753,7 +897,7 @@ function buildFlappySection() {
     if (state.mode === "ready") {
       state.bird.y = state.height * 0.45;
     } else {
-      state.bird.y = Math.min(Math.max(state.bird.radius, state.bird.y), state.height - state.bird.radius - 6);
+      state.bird.y = Math.min(Math.max(state.bird.radius, state.bird.y), getFloorY());
     }
   }
 
@@ -762,7 +906,7 @@ function buildFlappySection() {
     const topPadding = 36;
     const bottomPadding = 56;
     const minCenter = topPadding + gapHeight * 0.5;
-    const maxCenter = state.height - bottomPadding - gapHeight * 0.5;
+    const maxCenter = getGroundY() - bottomPadding - gapHeight * 0.5;
     const center = minCenter + Math.random() * Math.max(20, maxCenter - minCenter);
 
     state.pipes.push({
@@ -775,11 +919,15 @@ function buildFlappySection() {
   }
 
   function resetRound() {
+    clearPendingDieTimeout();
     state.mode = "ready";
     state.score = 0;
     state.pipes = [];
     state.spawnTimer = 0;
     state.bird.vy = 0;
+    state.bird.tilt = -0.4;
+    state.bird.downTiltTimer = 0;
+    state.bird.crashTiltTimer = 0;
     state.bird.x = Math.max(80, state.width * 0.28);
     state.bird.y = state.height * 0.45;
     updateHud();
@@ -803,6 +951,11 @@ function buildFlappySection() {
       startPlaying();
     }
 
+    if (state.mode === "crashing") {
+      return;
+    }
+
+    state.bird.downTiltTimer = 0;
     state.bird.vy = jumpVelocity;
   }
 
@@ -810,8 +963,11 @@ function buildFlappySection() {
     if (state.mode !== "playing") {
       return;
     }
-    state.mode = "gameover";
-    setOverlay("Game over. Press Space to retry");
+    state.mode = "crashing";
+    state.bird.vy = Math.max(state.bird.vy, 300);
+    state.bird.crashTiltTimer = 0;
+    playCrashSfxSequence();
+    setOverlay("");
   }
 
   function hitPipe(pipe) {
@@ -831,41 +987,80 @@ function buildFlappySection() {
       return;
     }
 
-    if (state.mode !== "playing") {
+    if (state.mode !== "playing" && state.mode !== "crashing") {
       return;
     }
 
-    state.spawnTimer += dt;
-    while (state.spawnTimer >= spawnInterval) {
-      state.spawnTimer -= spawnInterval;
-      spawnPipe();
+    if (state.mode === "playing") {
+      state.spawnTimer += dt;
+      while (state.spawnTimer >= spawnInterval) {
+        state.spawnTimer -= spawnInterval;
+        spawnPipe();
+      }
     }
 
-    const gravityScale = state.bird.vy > 0 ? fallGravityMultiplier : 1;
+    const gravityScale =
+      state.mode === "crashing"
+        ? Math.max(1.05, fallGravityMultiplier * 0.75)
+        : state.bird.vy > 0
+          ? fallGravityMultiplier
+          : 1;
     state.bird.vy += gravity * gravityScale * dt;
     state.bird.y += state.bird.vy * dt;
+    if (state.mode === "crashing") {
+      state.bird.crashTiltTimer += dt;
+    }
 
-    state.pipes.forEach((pipe) => {
-      pipe.x -= pipeSpeed * dt;
-      if (!pipe.passed && pipe.x + pipe.width < state.bird.x - state.bird.radius) {
-        pipe.passed = true;
-        state.score += 1;
-        if (state.score > state.best) {
-          state.best = state.score;
-          persistBest();
-        }
-        updateHud();
+    if (state.mode === "playing") {
+      if (state.bird.vy > 28) {
+        state.bird.downTiltTimer += dt;
+      } else {
+        state.bird.downTiltTimer = 0;
       }
-    });
 
-    state.pipes = state.pipes.filter((pipe) => pipe.x + pipe.width > -12);
+      const shouldApplyDownTilt = state.bird.downTiltTimer >= downTiltDelaySeconds;
+      const delayedVy = shouldApplyDownTilt ? state.bird.vy : Math.min(state.bird.vy, -14);
+      const targetTilt = Math.max(-0.55, Math.min(1.02, (delayedVy + 40) / 300));
+      const tiltEasing = targetTilt > state.bird.tilt ? 0.13 : 0.05;
+      state.bird.tilt += (targetTilt - state.bird.tilt) * tiltEasing;
+    }
 
-    if (state.bird.y - state.bird.radius <= 0 || state.bird.y + state.bird.radius >= state.height - 6) {
+    if (state.mode === "playing") {
+      state.pipes.forEach((pipe) => {
+        pipe.x -= pipeSpeed * dt;
+        if (!pipe.passed && pipe.x + pipe.width < state.bird.x - state.bird.radius) {
+          pipe.passed = true;
+          state.score += 1;
+          playSfx("point");
+          if (state.score > state.best) {
+            state.best = state.score;
+            persistBest();
+          }
+          updateHud();
+        }
+      });
+
+      state.pipes = state.pipes.filter((pipe) => pipe.x + pipe.width > -12);
+    }
+
+    if (state.mode === "playing" && state.bird.y - state.bird.radius <= 0) {
       gameOver();
     }
 
-    if (state.pipes.some(hitPipe)) {
+    if (state.mode === "playing" && state.pipes.some(hitPipe)) {
       gameOver();
+    }
+
+    const floorY = getFloorY();
+    if (state.bird.y >= floorY) {
+      state.bird.y = floorY;
+      state.bird.vy = 0;
+      if (state.mode === "crashing") {
+        state.mode = "gameover";
+        setOverlay("Game over. Press Space to retry");
+      } else if (state.mode === "playing") {
+        gameOver();
+      }
     }
   }
 
@@ -874,77 +1069,110 @@ function buildFlappySection() {
   }
 
   function drawBackground() {
-    const skyGradient = context.createLinearGradient(0, 0, 0, state.height);
-    skyGradient.addColorStop(0, "#8fd3ff");
-    skyGradient.addColorStop(0.64, "#7ec5f4");
-    skyGradient.addColorStop(1, "#70bceb");
-    context.fillStyle = skyGradient;
+    context.fillStyle = "#4ec0ca";
     context.fillRect(0, 0, state.width, state.height);
 
-    const horizonY = state.height - 56;
-    const hillStep = 20;
-    const hillYAt = (x) => horizonY - 8 - Math.sin((x + state.elapsed * 62) * 0.018) * 6;
-    context.fillStyle = "#83cb6d";
-    context.beginPath();
-    context.moveTo(0, horizonY);
-    for (let x = 0; x <= state.width; x += hillStep) {
-      context.lineTo(x, hillYAt(x));
-    }
-    const lastHillX = Math.floor(state.width / hillStep) * hillStep;
-    if (lastHillX < state.width) {
-      context.lineTo(state.width, hillYAt(state.width));
-    }
-    context.lineTo(state.width, state.height);
-    context.lineTo(0, state.height);
-    context.closePath();
-    context.fill();
+    const groundY = getGroundY();
+    const groundHeight = state.height - groundY;
+    const grassHeight = Math.max(6, Math.min(groundHeight - 2, 10));
+    const dirtY = groundY + grassHeight;
 
-    const groundY = state.height - 22;
-    context.fillStyle = "#89d15c";
-    context.fillRect(0, groundY, state.width, 22);
-    context.fillStyle = "rgba(0, 0, 0, 0.12)";
-    for (let x = -state.elapsed * 50; x < state.width + 16; x += 16) {
-      context.fillRect(x % (state.width + 16), groundY + 16, 8, 4);
+    context.fillStyle = "#ded895";
+    context.fillRect(0, groundY, state.width, groundHeight);
+
+    context.save();
+    context.beginPath();
+    context.rect(0, dirtY, state.width, Math.max(0, state.height - dirtY));
+    context.clip();
+    context.strokeStyle = "#d1c654";
+    context.lineWidth = 6;
+    context.lineCap = "square";
+    const stripeSpacing = 26;
+    const stripeOffset = (state.elapsed * pipeSpeed) % stripeSpacing;
+    for (let x = -40 - stripeOffset; x < state.width + 60; x += stripeSpacing) {
+      context.beginPath();
+      context.moveTo(x + 18, dirtY);
+      context.lineTo(x, state.height + 8);
+      context.stroke();
     }
-    context.fillStyle = "#75b34d";
-    context.fillRect(0, groundY, state.width, 4);
+    context.restore();
+
+    context.fillStyle = "#73bf2e";
+    context.fillRect(0, groundY, state.width, grassHeight);
+
+    context.strokeStyle = "#9de659";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(0, groundY + 3);
+    context.lineTo(state.width, groundY + 3);
+    context.stroke();
+
+    context.strokeStyle = "#543847";
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(0, groundY);
+    context.lineTo(state.width, groundY);
+    context.stroke();
+
+    context.beginPath();
+    context.moveTo(0, dirtY);
+    context.lineTo(state.width, dirtY);
+    context.stroke();
   }
 
   function drawPipes() {
-    const groundY = state.height - 22;
+    const groundY = getGroundY();
+    const pipeOutline = "#543847";
+    const pipeFill = "#73bf2e";
+    const pipeHighlight = "#9de659";
+    const pipeShadow = "#558c22";
 
     const drawPipeBody = (x, y, width, height) => {
-      const bodyGradient = context.createLinearGradient(x, y, x + width, y);
-      bodyGradient.addColorStop(0, "#23963f");
-      bodyGradient.addColorStop(0.5, "#2eb851");
-      bodyGradient.addColorStop(1, "#1d7c34");
-      context.fillStyle = bodyGradient;
+      if (height <= 0) {
+        return;
+      }
+
+      context.fillStyle = pipeFill;
       context.fillRect(x, y, width, height);
-      context.strokeStyle = "#165d26";
+      context.strokeStyle = pipeOutline;
       context.lineWidth = 3;
+      context.lineJoin = "round";
       context.strokeRect(x, y, width, height);
 
-      context.fillStyle = "rgba(255, 255, 255, 0.18)";
-      context.fillRect(x + 7, y + 6, 5, Math.max(8, height - 12));
+      context.fillStyle = pipeHighlight;
+      context.fillRect(x + width * 0.08, y, width * 0.16, height);
+      context.fillRect(x + width * 0.33, y, width * 0.06, height);
+
+      context.fillStyle = pipeShadow;
+      context.fillRect(x + width * 0.66, y, width * 0.25, height);
     };
 
     const drawPipeCap = (x, y, width, isTopCap) => {
-      const capHeight = 15;
+      const capHeight = Math.max(16, Math.round(width * 0.28));
+      const capInset = Math.max(4, Math.round(width * 0.08));
       const capY = isTopCap ? y - capHeight : y;
-      const capGradient = context.createLinearGradient(x - 4, capY, x + width + 4, capY);
-      capGradient.addColorStop(0, "#208d3b");
-      capGradient.addColorStop(0.5, "#35c45b");
-      capGradient.addColorStop(1, "#1a7331");
-      context.fillStyle = capGradient;
-      context.fillRect(x - 4, capY, width + 8, capHeight);
-      context.strokeStyle = "#165d26";
-      context.lineWidth = 2;
-      context.strokeRect(x - 4, capY, width + 8, capHeight);
+      const capX = x - capInset;
+      const capWidth = width + capInset * 2;
+
+      context.fillStyle = pipeFill;
+      context.fillRect(capX, capY, capWidth, capHeight);
+      context.strokeStyle = pipeOutline;
+      context.lineWidth = 3;
+      context.lineJoin = "round";
+      context.strokeRect(capX, capY, capWidth, capHeight);
+
+      context.fillStyle = pipeHighlight;
+      context.fillRect(capX + capWidth * 0.07, capY + 2, capWidth * 0.16, capHeight - 4);
+      context.fillRect(capX + capWidth * 0.28, capY + 2, capWidth * 0.06, capHeight - 4);
+
+      context.fillStyle = pipeShadow;
+      context.fillRect(capX + capWidth * 0.7, capY + 2, capWidth * 0.22, capHeight - 4);
     };
 
     state.pipes.forEach((pipe) => {
-      const topHeight = Math.max(10, pipe.gapTop - 7);
-      const bottomY = pipe.gapBottom + 7;
+      const capOffset = 8;
+      const topHeight = Math.max(10, pipe.gapTop - capOffset);
+      const bottomY = pipe.gapBottom + capOffset;
       const bottomHeight = Math.max(10, groundY - bottomY);
 
       drawPipeBody(pipe.x, 0, pipe.width, topHeight);
@@ -956,55 +1184,44 @@ function buildFlappySection() {
   }
 
   function drawBird() {
-    const tilt = Math.max(-0.5, Math.min(0.45, state.bird.vy / 420));
+    const crashTilt = Math.PI / 2;
+    const isCrashTiltActive =
+      state.mode === "gameover" || (state.mode === "crashing" && state.bird.crashTiltTimer >= crashTiltDelaySeconds);
+    const tilt = isCrashTiltActive ? crashTilt : state.bird.tilt;
     context.save();
     context.translate(state.bird.x, state.bird.y);
     context.rotate(tilt);
-
-    const bodyGradient = context.createLinearGradient(-state.bird.radius, -state.bird.radius, state.bird.radius, state.bird.radius);
-    bodyGradient.addColorStop(0, "#ffe27a");
-    bodyGradient.addColorStop(1, "#f2bc2b");
-    context.fillStyle = bodyGradient;
-    context.strokeStyle = "#ad8c19";
-    context.lineWidth = 2;
-    context.beginPath();
-    context.arc(0, 0, state.bird.radius, 0, Math.PI * 2);
-    context.fill();
-    context.stroke();
-
-    const wingFlap = Math.sin(state.elapsed * 24) * 3;
-    context.fillStyle = "#f7c74f";
-    context.beginPath();
-    context.ellipse(-4, 3 + wingFlap * 0.2, 6.2, 4.4, -0.4, 0, Math.PI * 2);
-    context.fill();
-
-    context.fillStyle = "#fff";
-    context.beginPath();
-    context.arc(4, -5, 4.6, 0, Math.PI * 2);
-    context.fill();
-
-    context.fillStyle = "#111";
-    context.beginPath();
-    context.arc(4.5, -5, 2, 0, Math.PI * 2);
-    context.fill();
-
-    context.fillStyle = "#ff8c2a";
-    context.beginPath();
-    context.moveTo(state.bird.radius - 2, -1);
-    context.lineTo(state.bird.radius + 8, -4);
-    context.lineTo(state.bird.radius - 2, 3);
-    context.closePath();
-    context.fill();
+    if (birdSpriteReady) {
+      const sprite = birdRenderSprite || birdSprite;
+      const size = sprite === birdRenderSprite ? birdRenderSprite.width : state.bird.radius * 3;
+      context.imageSmoothingEnabled = false;
+      context.drawImage(sprite, -size * 0.5, -size * 0.5, size, size);
+    } else {
+      context.fillStyle = "#f2bc2b";
+      context.beginPath();
+      context.arc(0, 0, state.bird.radius * 1.2, 0, Math.PI * 2);
+      context.fill();
+    }
 
     context.restore();
   }
 
   function drawScoreBanner() {
+    const bannerX = 10;
+    const bannerY = 10;
+    const bannerWidth = 150;
+    const bannerHeight = 42;
+
     context.fillStyle = "rgba(0, 0, 0, 0.34)";
-    context.fillRect(10, 10, 132, 30);
+    context.fillRect(bannerX, bannerY, bannerWidth, bannerHeight);
+
+    context.save();
     context.fillStyle = "#fff";
-    context.font = "bold 16px 'Pixelated MS Sans Serif', sans-serif";
-    context.fillText(`Score ${state.score}`, 18, 30);
+    context.font = "bold 14px 'Pixelated MS Sans Serif', sans-serif";
+    context.textBaseline = "top";
+    context.fillText(`Score ${state.score}`, bannerX + 8, bannerY + 7);
+    context.fillText(`Best ${state.best}`, bannerX + 8, bannerY + 23);
+    context.restore();
   }
 
   function draw() {
@@ -1054,6 +1271,8 @@ function buildFlappySection() {
       return;
     }
     event.preventDefault();
+    initSfx();
+    playSfx("wing");
     flap();
   }
 
@@ -1065,6 +1284,7 @@ function buildFlappySection() {
     if (event.button !== 0) {
       return;
     }
+    initSfx();
     flap();
   }
 
@@ -1103,6 +1323,7 @@ function buildFlappySection() {
   window.render_game_to_text = renderGameToText;
 
   window.advanceTime = advanceDeterministic;
+  initSfx();
 
   updateHud();
   syncCanvasSize();
@@ -1110,6 +1331,8 @@ function buildFlappySection() {
   state.rafId = requestAnimationFrame(loop);
 
   wrapper.cleanup = () => {
+    clearPendingDieTimeout();
+    disposeSfx();
     if (state.rafId) {
       cancelAnimationFrame(state.rafId);
       state.rafId = 0;
