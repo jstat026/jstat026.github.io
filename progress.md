@@ -433,3 +433,355 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
   - Added pre-scaled bird sprite cache (offscreen canvas) on image load so render loop no longer re-samples the large PNG each frame.
   - Kept sound behavior semantics the same (wing on space, point on score, hit then die on crash).
   - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+
+- minecraft.exe terrain overhaul (biome + water generation) implementation:
+  - Updated `/Users/tt021/Desktop/web2/js/minecraft-app.js`:
+    - Added `BLOCK_IDS.WATER` / `TILE_IDS.WATER` and water face tile mapping.
+    - Added procedural water atlas tile generation.
+    - Replaced single-noise heightmap with multi-noise `sampleColumn()` (continental/erosion/peaks/detail + river/lake + domain warp).
+    - Added explicit solidity helper so water is non-solid for collision.
+    - Updated block layering to include water fill above terrain up to `waterLevel` and biome-aware surface/subsurface materials.
+    - Updated placement logic to allow placing into water cells.
+    - Added pointer-lock failure guard to avoid uncaught runtime `WrongDocumentError`.
+    - Updated spawn selection to deterministic ring search with inland/plains preference and slope checks.
+    - Updated worker init payload to include `blockWater`.
+  - Updated `/Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js`:
+    - Added `blockWater` to worker context.
+    - Updated face-occlusion rules so water-water/internal faces cull correctly while keeping shore faces visible.
+  - Updated `/Users/tt021/Desktop/web2/js/main.js`:
+    - `portfolioData.minecraft.maxHeight` default raised to `80`.
+
+- Validation:
+  - Syntax checks passed:
+    - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js`
+    - `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js`
+    - `node --check /Users/tt021/Desktop/web2/js/main.js`
+  - Playwright web-game client runs generated:
+    - `/Users/tt021/Desktop/web2/output/web-game-minecraft-terrain-overhaul-v3/shot-0.png`
+    - `/Users/tt021/Desktop/web2/output/web-game-minecraft-terrain-overhaul-v3/shot-1.png`
+    - `/Users/tt021/Desktop/web2/output/web-game-minecraft-terrain-overhaul-v3/shot-2.png`
+    - `/Users/tt021/Desktop/web2/output/web-game-minecraft-terrain-overhaul-v4/shot-0.png`
+    - `/Users/tt021/Desktop/web2/output/web-game-minecraft-terrain-overhaul-v4/shot-1.png`
+  - Initial flat-world issue was reproduced and corrected by rebalancing noise normalization/thresholds.
+
+- Follow-up feature (requested): Minecraft block expansion + file-backed vanilla atlas + paged hotbar.
+  - Updated `/Users/tt021/Desktop/web2/js/minecraft-app.js`:
+    - expanded block catalog to 25 IDs including requested placeable set (`COBBLESTONE`, `OAK_PLANKS`, `BRICKS`, `SANDSTONE`, `GRAVEL`, `CLAY`, `SNOW_BLOCK`, `GLASS`, `OAK_LOG`, `OAK_LEAVES`, `COAL_ORE`, `IRON_ORE`, `GOLD_ORE`, `DIAMOND_ORE`, `OBSIDIAN`, `MOSSY_COBBLESTONE`, `NETHERRACK`, `BEDROCK`) while keeping `WATER` generation-only and non-solid.
+    - switched atlas system from procedural texture generation to file-backed loading via `loadAtlasTexture(...)` using:
+      - `textureAtlasPath`
+      - `textureAtlasMapPath`
+      - `textureTileSize`
+    - added explicit atlas-map validation for every tile referenced by `BLOCK_FACE_TILES`; on missing/incomplete map throws:
+      - `Texture atlas map missing/incomplete. Run: npm run minecraft:atlas-map`
+    - added paged hotbar UX:
+      - page size from config (`hotbarPageSize`, default 9)
+      - `1..9` select slot in current page
+      - `Q/E` page switch
+      - mouse wheel page switch
+      - prev/next page buttons + page indicator in HUD (works on mobile layout too)
+    - updated overlay help text to include `1-9` and `Q/E or mouse wheel` controls.
+    - extended material-audio mapping for new blocks:
+      - stone-like -> `stone`
+      - sand-like -> `sand`
+      - wood-like -> `wood`
+      - grass-like -> `grass`
+    - spawn search radius tuned to `96` (from `128`) to match requested range.
+  - Updated `/Users/tt021/Desktop/web2/js/main.js` minecraft config with defaults:
+    - `maxHeight: 80`
+    - `textureAtlasPath: "./assets/minecraft/20w06a_blocks.png-atlas.png"`
+    - `textureAtlasMapPath: "./assets/minecraft/20w06a_blocks.atlas-map.json"`
+    - `textureTileSize: 16`
+    - `hotbarPageSize: 9`
+  - Updated `/Users/tt021/Desktop/web2/css/style.css`:
+    - new `.minecraft-hotbar-wrap` container
+    - 9-column hotbar layout
+    - page buttons + page label styling
+    - mobile responsive sizing for new controls.
+  - Added `/Users/tt021/Desktop/web2/tools/generate-20w06a-atlas-map.mjs`:
+    - downloads Mojang version manifest + 20w06a client jar
+    - extracts required `assets/minecraft/textures/block/*.png`
+    - scans provided atlas on 16x16 grid for exact RGBA matches
+    - writes `/Users/tt021/Desktop/web2/assets/minecraft/20w06a_blocks.atlas-map.json`
+  - Added `/Users/tt021/Desktop/web2/package.json` with script:
+    - `minecraft:atlas-map` -> `node tools/generate-20w06a-atlas-map.mjs`
+
+- Atlas mapping note:
+  - The provided atlas does not contain exact `glass.png`; it matches `light_gray_stained_glass.png` exactly.
+  - `TILE_IDS.GLASS` was mapped to `light_gray_stained_glass` so generation + runtime UV validation succeed with this atlas.
+
+- Validation:
+  - Static checks passed:
+    - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js`
+    - `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js`
+    - `node --check /Users/tt021/Desktop/web2/js/main.js`
+    - `node --check /Users/tt021/Desktop/web2/tools/generate-20w06a-atlas-map.mjs`
+  - Atlas map generation:
+    - `npm run minecraft:atlas-map` -> success, wrote 25-tile map to `/Users/tt021/Desktop/web2/assets/minecraft/20w06a_blocks.atlas-map.json`.
+  - Tile coverage validation:
+    - verified all unique tile keys from `TILE_IDS` exist in generated atlas map (`missing: []`).
+  - Playwright loop using skill client:
+    - command used: `node $WEB_GAME_CLIENT --url http://127.0.0.1:4181 --click-selector '.desktop-icon[data-window-id="minecraft"]' --actions-file /Users/tt021/Desktop/web2/output/minecraft-atlas-actions.json --iterations 3 --pause-ms 350 --screenshot-dir /Users/tt021/Desktop/web2/output/minecraft-atlas-test`
+    - screenshots generated:
+      - `/Users/tt021/Desktop/web2/output/minecraft-atlas-test/shot-0.png`
+      - `/Users/tt021/Desktop/web2/output/minecraft-atlas-test/shot-1.png`
+      - `/Users/tt021/Desktop/web2/output/minecraft-atlas-test/shot-2.png`
+    - visual inspection confirms:
+      - vanilla-style atlas textures are active (no procedural look),
+      - 9-slot hotbar with page controls rendered,
+      - page indicator rendered (`1/3`),
+      - no Playwright-captured console/page errors files were emitted.
+
+- TODO / suggestions:
+  - Add a dedicated automated browser assertion script for `Q/E`, wheel paging, and cross-page place/break interactions (skill client key-map is limited for these controls).
+
+- Follow-up task (requested): copy texture and sound assets from `gdavidss/isocraft`.
+  - Cloned repository to `/tmp/isocraft.REtZYn`.
+  - Verified repo does **not** include tracked texture/sound binaries (excluded by `.gitignore` and README disclaimer).
+  - Imported the asset set referenced by isocraft source into this workspace by resolving file names from repo code and fetching official Minecraft assets:
+    - Textures copied to `/Users/tt021/Desktop/web2/textures` (114 files)
+    - Sound effects copied to `/Users/tt021/Desktop/web2/sound-effects` (111 files, `.ogg`)
+    - Steve skin copied to `/Users/tt021/Desktop/web2/texturepack/assets/minecraft/textures/entity/player/wide/steve.png`
+  - Notes:
+    - `mangrove_sapling.png` in isocraft refs is mapped to modern `mangrove_propagule.png` content.
+    - Source repo itself provides code references/paths but not the raw copyrighted assets.
+
+- Follow-up task (requested): wire minecraft.exe to use copied isocraft-style texture/sound folders.
+  - Updated `/Users/tt021/Desktop/web2/js/minecraft-app.js`:
+    - `DEFAULT_CONFIG.audioAssetBasePath` -> `./sound-effects`
+    - added `DEFAULT_CONFIG.textureTileBasePath` -> `./textures`
+    - switched `TILE_IDS.GLASS` to `glass`
+    - added `normalizeConfig.textureTileBasePath`
+    - added `loadAtlasFromTileTextures(...)` to build runtime atlas from `./textures/*.png` (no atlas-map dependency for runtime)
+    - `setupRenderer()` now loads block tiles from `textureTileBasePath` + `textureTileSize`
+    - rewired audio playback to isocraft-style `.ogg` paths in `sound-effects`:
+      - break/place -> `dig/<material><1..4>.ogg`
+      - steps -> `step/<material><...>.ogg` (sand 1..5, others 1..6)
+      - ambience loop -> `liquid/water.ogg`
+    - audio lazy-load fallback added in `playBuffer(...)` so missing uncached clips are fetched on demand.
+  - Updated `/Users/tt021/Desktop/web2/js/main.js` minecraft config:
+    - `audioAssetBasePath: "./sound-effects"`
+    - `textureTileBasePath: "./textures"`
+
+- Asset completeness sync for wired runtime:
+  - Ensured all required block textures used by current `BLOCK_FACE_TILES` exist in `/Users/tt021/Desktop/web2/textures` (copied from official client where missing):
+    - includes `cobblestone`, `bricks`, `sandstone`, `glass`, `coal_ore`, `iron_ore`, `gold_ore`, `diamond_ore`, `obsidian`, `mossy_cobblestone`.
+
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - Runtime Playwright check (`http://127.0.0.1:4181`) generated:
+    - `/Users/tt021/Desktop/web2/output/minecraft-isocraft-wire-test/shot-0.png`
+  - HTTP logs confirmed active requests for new wired paths:
+    - `/textures/*.png` (block textures)
+    - `/sound-effects/**/*.ogg` (dig/step/random/liquid clips)
+
+- Follow-up (minecraft color parity): implemented biome-tinted terrain variants without switching to per-face shader.
+  - Added climate-driven variants for grass/water (+ tinted leaves variants for consistency) in `/Users/tt021/Desktop/web2/js/minecraft-app.js`.
+  - Added runtime tint-atlas generation via `tinted:<base>:r,g,b` tile keys in `/Users/tt021/Desktop/web2/js/minecraft-app.js` (`loadAtlasFromTileTextures`).
+  - Updated terrain generation to pick tinted grass/water by sampled column climate (`temperature`/`moisture`) in `/Users/tt021/Desktop/web2/js/minecraft-app.js`.
+  - Updated water checks to treat all water variants as non-solid + swimmable (placement, collision sampling, solidity checks).
+  - Updated worker culling to treat all water IDs as water via `waterBlockIds` lookup in `/Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js`.
+  - Switched atlas texture sampling to nearest-neighbor with mipmaps disabled in `/Users/tt021/Desktop/web2/js/minecraft-app.js`.
+
+- Validation:
+  - `node --check` passed for `/Users/tt021/Desktop/web2/js/minecraft-app.js`, `/Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js`, `/Users/tt021/Desktop/web2/js/main.js`.
+  - Playwright open smoke test screenshot: `/Users/tt021/Desktop/web2/output/minecraft-biome-tint-check-open/manual-open.png`.
+  - Playwright error log: `/Users/tt021/Desktop/web2/output/minecraft-biome-tint-check-open/manual-errors.json` (empty).
+
+- Follow-up (isocraft color parity mode):
+  - Added `colorProfile` config (`isocraft`/`default`) in `/Users/tt021/Desktop/web2/js/minecraft-app.js` normalize/default path.
+  - Set defaults to isocraft-style color mode and disabled post-fx by default:
+    - `/Users/tt021/Desktop/web2/js/minecraft-app.js` (`DEFAULT_CONFIG.postFxProfile = "none"`, `DEFAULT_CONFIG.colorProfile = "isocraft"`)
+    - `/Users/tt021/Desktop/web2/js/main.js` (`portfolioData.minecraft.postFxProfile = "none"`, `colorProfile = "isocraft"`)
+  - Renderer changes in `/Users/tt021/Desktop/web2/js/minecraft-app.js`:
+    - `THREE.NoToneMapping` + exposure 1 in isocraft mode.
+    - `MeshLambertMaterial` for voxels (replacing standard PBR look).
+    - isocraft-like clear/background/fog base color (`0x87CEEB`).
+    - Post processing chain disabled when `colorProfile === "isocraft"`.
+  - Daylight loop in isocraft mode now keeps sky/fog color fixed and uses flatter light intensity ranges.
+  - Water tint lock: `resolveWaterBlockForColumn()` now returns base `WATER` (no per-climate water tint).
+
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - Playwright smoke screenshot: `/Users/tt021/Desktop/web2/output/minecraft-color-isocraft-mode.png`.
+  - Runtime error log: `/Users/tt021/Desktop/web2/output/minecraft-color-isocraft-mode.errors.json` (empty array).
+
+- Follow-up (inventory + block breaking + pickups):
+  - Replaced paged hotbar UI with isocraft-style 9-slot inventory bar + creative inventory panel in `/Users/tt021/Desktop/web2/js/minecraft-app.js` and `/Users/tt021/Desktop/web2/css/style.css`.
+  - Added inventory data model (stacking to 64, add/remove, selected slot, wheel/1-9 selection, `E` toggle panel).
+  - Added progressive hold-to-break system with staged crack overlay textures (10 stages) and hardness-based break times (non-instant) in `/Users/tt021/Desktop/web2/js/minecraft-app.js`.
+  - Added dropped item entities (sprite pickups with gravity/bobbing/attraction), auto-pickup into inventory, and drop remap (grass -> dirt).
+  - Placement now consumes inventory item count; failed placements refund consumed item.
+  - Mobile break action now uses hold (pointerdown/up) rather than instant click.
+
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js` passed.
+  - Playwright smoke screenshots:
+    - `/Users/tt021/Desktop/web2/output/minecraft-inventory-break/shot-0-world.png`
+    - `/Users/tt021/Desktop/web2/output/minecraft-inventory-break/shot-1-inventory.png`
+  - Playwright runtime errors: `/Users/tt021/Desktop/web2/output/minecraft-inventory-break/errors.json` (empty array).
+  - Inventory slot snapshot after adding from panel: `/Users/tt021/Desktop/web2/output/minecraft-inventory-break/slots.json`.
+
+- Follow-up patch (requested): make block breaking animation match isocraft style more closely.
+  - Updated `/Users/tt021/Desktop/web2/js/minecraft-app.js`:
+    - break overlay material now uses black-tinted crack overlay (`color: 0x000000`) with `alphaTest: 0.1`.
+    - break overlay mesh size aligned with isocraft-style epsilon (`1.002`) to avoid z-fighting while staying tight to block bounds.
+    - destroy stage textures now keep nearest-neighbor sampling without forcing sRGB color space (better parity with crack-mask usage).
+    - breaking now applies stage 0 immediately when a new target block starts being mined.
+    - added per-hold dig-hit cadence (`AudioController.playHit`) during mining progress.
+    - break state now tracks/reset `hitSoundCooldown`.
+
+- Validation (breaking patch):
+  - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js` passed.
+  - Playwright smoke run generated:
+    - `/Users/tt021/Desktop/web2/output/minecraft-break-smoke/shot-0.png`
+    - `/Users/tt021/Desktop/web2/output/minecraft-break-smoke/shot-1.png`
+    - `/Users/tt021/Desktop/web2/output/minecraft-break-smoke/shot-2.png`
+- Overlay thickness tune (requested): thinned block-break crack overlay in `/Users/tt021/Desktop/web2/js/minecraft-app.js` by:
+  - switching overlay render side from `DoubleSide` to `FrontSide`,
+  - reducing overlay shell size from `1.002` to `1.0006`,
+  - enabling polygon offset (`-1/-1`),
+  - lowering overlay opacity to `0.82`.
+- Validation: `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+
+- Terrain/worldgen follow-up (requested): major natural generation upgrade with forests + transparent water rendering.
+  - Updated `/Users/tt021/Desktop/web2/js/minecraft-app.js` `WorldStore`:
+    - Added deterministic forest/tree generation (`forestNoise`, `treeHeightNoise`, cell-cached sampling).
+    - Added biome/slope/moisture/temperature-aware tree placement.
+    - Added chunk-border-safe tree stamping pass (`applyTreesToChunk`) so canopies/trunks stream cleanly across chunk boundaries.
+    - Added tinted leaf selection by climate band (`resolveLeavesBlockForColumn`).
+    - Added natural block query (`getNaturalBlock`) and updated `setBlock` to compare against natural terrain+trees so broken trees persist and do not reappear after chunk reload.
+    - Updated top-height recomputation to use live chunk voxel data (including trees/edits).
+  - Updated rendering pipeline in `/Users/tt021/Desktop/web2/js/minecraft-app.js`:
+    - Added separate `waterMaterial` (`transparent`, `opacity: 0.6`, `depthWrite: false`) for see-through water.
+    - Updated raycast to recurse into grouped chunk meshes.
+  - Updated `/Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js`:
+    - Split mesh output into solid + water geometry buckets.
+    - Kept existing face occlusion behavior and emitted independent buffers for both mesh classes.
+  - Updated `ChunkStreamManager` in `/Users/tt021/Desktop/web2/js/minecraft-app.js`:
+    - Accepts `waterMaterial`.
+    - Builds solid mesh + transparent water mesh per chunk (grouped when both exist).
+    - Properly disposes grouped mesh geometries.
+
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - Playwright smoke run generated updated screenshots:
+    - `/Users/tt021/Desktop/web2/output/minecraft-terrain-water/shot-0.png`
+    - `/Users/tt021/Desktop/web2/output/minecraft-terrain-water/shot-1.png`
+    - `/Users/tt021/Desktop/web2/output/minecraft-terrain-water/shot-2.png`
+    - `/Users/tt021/Desktop/web2/output/minecraft-terrain-water/shot-3.png`
+
+- Follow-up gameplay/world patch (requested): underwater swimming + taller trees + transparent leaves.
+  - Updated `/Users/tt021/Desktop/web2/js/minecraft-app.js`:
+    - Water movement physics reworked so player can swim up/down and stay submerged:
+      - `Space` ascends, `Ctrl` descends,
+      - neutral buoyancy reduced when submerged,
+      - adjusted vertical drag/clamp for controllable underwater movement.
+    - Tree generation density increased and trunk heights increased (now tall trees):
+      - higher biome density multipliers,
+      - trunk height now 6-11 blocks (+ hill bonus).
+    - Tree canopy expanded and reshaped over more layers for larger crowns.
+    - Leaf rendering made transparent via alpha cutout by setting `alphaTest` on voxel material.
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - Runtime smoke screenshots generated in `/Users/tt021/Desktop/web2/output/minecraft-swim-trees/` (trees + transparent leaves visible).
+
+- Follow-up fixes (inventory visuals + placement reliability):
+  - Updated `/Users/tt021/Desktop/web2/css/style.css` hotbar/inventory slot styling to remove inner gray inset bezel:
+    - `.minecraft-hotbar-slot-inner` and `.minecraft-slot-inner-grid` now use transparent background and no border.
+    - Kept outer slot framing but corrected bevel orientation where needed.
+  - Hardened placement input in `/Users/tt021/Desktop/web2/js/minecraft-app.js`:
+    - Added `state.lastPlaceInputTs` debounce marker.
+    - `contextmenu` now prevents default and can trigger place while pointer-locked (debounced fallback).
+    - `mousedown` placement now supports both right-click and macOS ctrl-click (`button===0 && ctrlKey`).
+    - Kept left-click break hold behavior intact.
+  - Prior placement resilience retained:
+    - `updateRaycastTarget()` no longer clears targets solely because pointer lock is released.
+    - `tryPlaceBlock()` re-samples raycast target if `targetPlace` is null.
+
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js` passed.
+  - Playwright smoke run opened `minecraft.exe` and captured screenshots:
+    - `/Users/tt021/Desktop/web2/.playwright-cli/page-2026-02-20T20-29-11-750Z.png`
+    - `/Users/tt021/Desktop/web2/.playwright-cli/page-2026-02-20T20-29-49-003Z.png`
+  - Note: headless Playwright cannot fully prove pointer-lock behavior equivalently to interactive desktop input; manual in-app retest required for final confirmation.
+
+- Inventory visual refinement (user report: off-center icons + remaining Win95 bezel look):
+  - `/Users/tt021/Desktop/web2/css/style.css`:
+    - converted hotbar frame/slots to flat styling (`appearance: none`, neutral solid borders, no beveled border-color ordering).
+    - converted creative grid buttons to flat styling (same no-bevel approach).
+    - centered icon containers with absolute in-slot centering (`inset: 0; margin: auto`) and `pointer-events: none`.
+    - adjusted `.minecraft-iso-cube` transform origin + slight Y translation to visually center the isometric icon in slot bounds.
+    - updated selector ring to fit flat slot frame geometry.
+
+- Requested follow-up fixes:
+  1) Inventory should be empty initially.
+  2) Right-click place should work immediately without ctrl-click priming.
+
+- Implemented in `/Users/tt021/Desktop/web2/js/minecraft-app.js`:
+  - `createStarterInventorySlots()` now returns all-null slots (empty hotbar at start).
+  - Added robust right-click detection helper in `bindDesktopPointerInput()`:
+    - accepts `button===2`, `which===3`, `(buttons & 2)`, and mac ctrl-click fallback.
+  - `contextmenu` handler now supports placement fallback whenever desktop + inventory closed (not gated on pointer-locked), with debounce.
+  - Added `auxclick` placement handler for browsers/devices that dispatch right-click via auxclick path.
+  - Retained debounce (`lastPlaceInputTs`) to avoid double-place from multi-event right-click sequences.
+
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js` passed.
+
+- Major change: replaced custom minecraft engine with embedded isocraft app.
+  - Replaced `/Users/tt021/Desktop/web2/js/minecraft-app.js` implementation with a thin host that renders an iframe to `./assets/isocraft/index.html` and exposes `cleanup`.
+  - Updated `/Users/tt021/Desktop/web2/js/main.js` `portfolioData.minecraft` to only use `isocraftPath`.
+  - Added iframe/fallback styles in `/Users/tt021/Desktop/web2/css/style.css` (`.minecraft-section-isocraft`, `.minecraft-stage-isocraft`, `.minecraft-iframe`, `.minecraft-isocraft-fallback`).
+
+- Isocraft build/publish pipeline used:
+  - Source repo already present at `/Users/tt021/Desktop/web2/.vendor/isocraft`.
+  - Installed deps and built with Vite.
+  - Published output to `/Users/tt021/Desktop/web2/assets/isocraft`.
+
+- Isocraft source patches made for this workspace:
+  - `/Users/tt021/Desktop/web2/.vendor/isocraft/vite.config.ts`
+    - switched `base` to `./` for embedded/static hosting
+    - removed static-copy plugin requirement that failed in this workspace
+  - `/Users/tt021/Desktop/web2/.vendor/isocraft/src/cubiomes/wasm-bindings.ts`
+    - added fallback path to TS biome generator when cubiomes WASM is unavailable
+    - avoid probing `/cubiomes.js` when factory is not present
+  - `/Users/tt021/Desktop/web2/.vendor/isocraft/src/main.ts`
+    - removed `@vercel/analytics` injection
+  - `/Users/tt021/Desktop/web2/.vendor/isocraft/src/game3d/Game3D.ts`
+    - disabled auto music start (workspace has no soundtrack assets)
+  - `/Users/tt021/Desktop/web2/.vendor/isocraft/index.html`
+    - removed remote minecraft webfont usage in loading screen
+
+- Runtime validation:
+  - Playwright screenshot confirms minecraft window is now running isocraft content:
+    - `/Users/tt021/Desktop/web2/.playwright-cli/page-2026-02-20T21-19-33-141Z.png`
+  - Console reduced to a single unrelated root favicon 404 in this harness.
+
+- UX patch (window behavior):
+  - Removed per-window Escape-to-close handler from `/Users/tt021/Desktop/web2/js/main.js`.
+  - Result: pressing `Esc` no longer closes app windows; it only continues to close Start menu and in-app ESC handlers (e.g., isocraft pause menu) remain intact.
+
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+
+- isocraft pause menu copy updates:
+  - Changed main menu button text from `Save and Quit to Title` to `Regenerate World` in `/Users/tt021/Desktop/web2/.vendor/isocraft/src/game3d/PauseMenu.ts`.
+  - Removed the main menu footer credit/link row (`Created by Gui Dávid · GitHub`) from the same file.
+
+- Build/publish:
+  - Rebuilt isocraft (`npm run build`) and republished dist to `/Users/tt021/Desktop/web2/assets/isocraft`.
+  - Verified published bundle references `index-bxwc9g_B.js` and contains `Regenerate World`.

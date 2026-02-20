@@ -72,6 +72,9 @@ let ctx = {
   maxHeight: 32,
   planeStride: 16 * 16,
   blockAir: 0,
+  blockWater: 6,
+  waterBlockIds: [6],
+  waterBlockLookup: { 6: 1 },
   blockFaceTiles: {},
   tileUVRects: {},
 };
@@ -120,7 +123,13 @@ function shouldOcclude(currentBlock, neighborBlock) {
   if (neighborBlock === ctx.blockAir) {
     return false;
   }
-  return neighborBlock !== 0;
+  if (ctx.waterBlockLookup[currentBlock]) {
+    return neighborBlock !== ctx.blockAir;
+  }
+  if (ctx.waterBlockLookup[neighborBlock]) {
+    return false;
+  }
+  return true;
 }
 
 function resolveUV(faceKey, corner, rect) {
@@ -161,6 +170,46 @@ function resolveUV(faceKey, corner, rect) {
   return [u, v];
 }
 
+function createMeshBucket() {
+  return {
+    positions: [],
+    normals: [],
+    uvs: [],
+    indices: [],
+    blockIds: [],
+  };
+}
+
+function finalizeMeshBucket(bucket) {
+  if (!bucket.positions.length) {
+    return { hasGeometry: false };
+  }
+
+  const positionArray = new Float32Array(bucket.positions);
+  const normalArray = new Float32Array(bucket.normals);
+  const uvArray = new Float32Array(bucket.uvs);
+  const useUint32 = positionArray.length / 3 > 65535;
+  const indexArray = useUint32 ? new Uint32Array(bucket.indices) : new Uint16Array(bucket.indices);
+  const blockIdArray = new Uint16Array(bucket.blockIds);
+
+  return {
+    hasGeometry: true,
+    positions: positionArray.buffer,
+    normals: normalArray.buffer,
+    uvs: uvArray.buffer,
+    indices: indexArray.buffer,
+    blockIds: blockIdArray.buffer,
+    indexType: useUint32 ? "u32" : "u16",
+    transfer: [
+      positionArray.buffer,
+      normalArray.buffer,
+      uvArray.buffer,
+      indexArray.buffer,
+      blockIdArray.buffer,
+    ],
+  };
+}
+
 function buildChunkMesh(payload) {
   const {
     chunkX,
@@ -184,11 +233,8 @@ function buildChunkMesh(payload) {
     return;
   }
 
-  const positions = [];
-  const normals = [];
-  const uvs = [];
-  const indices = [];
-  const blockIds = [];
+  const solid = createMeshBucket();
+  const water = createMeshBucket();
 
   const worldStartX = chunkX * ctx.chunkSize;
   const worldStartZ = chunkZ * ctx.chunkSize;
@@ -229,21 +275,22 @@ function buildChunkMesh(payload) {
             continue;
           }
 
-          const baseIndex = positions.length / 3;
+          const bucket = ctx.waterBlockLookup[blockId] ? water : solid;
+          const baseIndex = bucket.positions.length / 3;
 
           for (let cornerIndex = 0; cornerIndex < 4; cornerIndex += 1) {
             const corner = face.corners[cornerIndex];
             const worldX = worldStartX + localX + corner[0];
             const worldY = y + corner[1];
             const worldZ = worldStartZ + localZ + corner[2];
-            positions.push(worldX, worldY, worldZ);
-            normals.push(face.normal[0], face.normal[1], face.normal[2]);
+            bucket.positions.push(worldX, worldY, worldZ);
+            bucket.normals.push(face.normal[0], face.normal[1], face.normal[2]);
 
             const uv = resolveUV(face.key, corner, rect);
-            uvs.push(uv[0], uv[1]);
+            bucket.uvs.push(uv[0], uv[1]);
           }
 
-          indices.push(
+          bucket.indices.push(
             baseIndex,
             baseIndex + 1,
             baseIndex + 2,
@@ -251,13 +298,16 @@ function buildChunkMesh(payload) {
             baseIndex + 2,
             baseIndex + 3
           );
-          blockIds.push(blockId);
+          bucket.blockIds.push(blockId);
         }
       }
     }
   }
 
-  if (positions.length === 0) {
+  const solidBuffers = finalizeMeshBucket(solid);
+  const waterBuffers = finalizeMeshBucket(water);
+
+  if (!solidBuffers.hasGeometry && !waterBuffers.hasGeometry) {
     self.postMessage({
       type: "meshReady",
       revision,
@@ -268,13 +318,13 @@ function buildChunkMesh(payload) {
     return;
   }
 
-  const positionArray = new Float32Array(positions);
-  const normalArray = new Float32Array(normals);
-  const uvArray = new Float32Array(uvs);
-  const useUint32 = positionArray.length / 3 > 65535;
-  const indexArray = useUint32 ? new Uint32Array(indices) : new Uint16Array(indices);
-  const blockIdArray = new Uint16Array(blockIds);
-
+  const transfer = [];
+  if (solidBuffers.transfer) {
+    transfer.push(...solidBuffers.transfer);
+  }
+  if (waterBuffers.transfer) {
+    transfer.push(...waterBuffers.transfer);
+  }
   self.postMessage(
     {
       type: "meshReady",
@@ -282,20 +332,22 @@ function buildChunkMesh(payload) {
       chunkX,
       chunkZ,
       hasGeometry: true,
-      positions: positionArray.buffer,
-      normals: normalArray.buffer,
-      uvs: uvArray.buffer,
-      indices: indexArray.buffer,
-      blockIds: blockIdArray.buffer,
-      indexType: useUint32 ? "u32" : "u16",
+      solidHasGeometry: solidBuffers.hasGeometry,
+      solidPositions: solidBuffers.positions || null,
+      solidNormals: solidBuffers.normals || null,
+      solidUvs: solidBuffers.uvs || null,
+      solidIndices: solidBuffers.indices || null,
+      solidBlockIds: solidBuffers.blockIds || null,
+      solidIndexType: solidBuffers.indexType || "u16",
+      waterHasGeometry: waterBuffers.hasGeometry,
+      waterPositions: waterBuffers.positions || null,
+      waterNormals: waterBuffers.normals || null,
+      waterUvs: waterBuffers.uvs || null,
+      waterIndices: waterBuffers.indices || null,
+      waterBlockIds: waterBuffers.blockIds || null,
+      waterIndexType: waterBuffers.indexType || "u16",
     },
-    [
-      positionArray.buffer,
-      normalArray.buffer,
-      uvArray.buffer,
-      indexArray.buffer,
-      blockIdArray.buffer,
-    ]
+    transfer
   );
 }
 
@@ -303,9 +355,19 @@ self.onmessage = (event) => {
   const payload = event.data || {};
 
   if (payload.type === "init") {
+    const incomingWaterIds =
+      Array.isArray(payload.waterBlockIds) && payload.waterBlockIds.length
+        ? payload.waterBlockIds
+        : [payload.blockWater ?? ctx.blockWater];
+    const waterBlockLookup = Object.create(null);
+    for (let i = 0; i < incomingWaterIds.length; i += 1) {
+      waterBlockLookup[incomingWaterIds[i]] = 1;
+    }
     ctx = {
       ...ctx,
       ...payload,
+      waterBlockIds: incomingWaterIds,
+      waterBlockLookup,
       planeStride: payload.chunkSize * payload.chunkSize,
     };
     return;

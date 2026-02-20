@@ -1,0 +1,7 @@
+{
+  "name": "web2",
+  "private": true,
+  "scripts": {
+    "minecraft:atlas-map": "node tools/generate-20w06a-atlas-map.mjs"
+  }
+}

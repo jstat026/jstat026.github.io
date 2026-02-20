@@ -155,28 +155,7 @@ const portfolioData = {
     spawnInterval: 1.2,
   },
   minecraft: {
-    seed: 30117,
-    chunkSize: 16,
-    maxHeight: 48,
-    waterLevel: 10,
-    streamRadiusDesktop: 5,
-    streamRadiusMobile: 3,
-    moveSpeed: 8.7,
-    sprintMultiplier: 1.42,
-    crouchMultiplier: 0.58,
-    jumpSpeed: 9.5,
-    gravity: 26,
-    mouseSensitivity: 0.0021,
-    mobileLookSensitivity: 0.0042,
-    mobileMoveDeadzone: 0.12,
-    postFxProfile: "max",
-    fogDensity: 0.018,
-    bloomStrength: 0.45,
-    bloomRadius: 0.24,
-    bloomThreshold: 0.52,
-    shadowDistanceDesktop: 52,
-    shadowDistanceMobile: 30,
-    audioAssetBasePath: "./assets/minecraft/audio",
+    isocraftPath: "./assets/isocraft/index.html",
   },
   music: {
     defaultTrack: "./assets/music/%E8%AA%AA%E8%AC%8A%E8%80%85.mp3",
@@ -278,8 +257,8 @@ const windowMeta = [
   },
   {
     id: "minecraft",
-    exeName: "minecraft.exe",
-    title: "Minecraft",
+    exeName: "isocraft.exe",
+    title: "Isocraft",
     icon: "./assets/icons/minecraft.svg",
     defaultPos: { x: 124, y: 72 },
     defaultSize: { w: 760, h: 520 },
@@ -2123,15 +2102,6 @@ function renderWindows() {
     if (meta.canMaximize !== false) {
       titlebar.addEventListener("dblclick", () => manager.toggleMaximize(meta.id));
     }
-
-    createdWindow.addEventListener("keydown", async (event) => {
-      if (event.key === "Escape") {
-        if (document.pointerLockElement) {
-          return;
-        }
-        await manager.closeWindow(meta.id, iconMap.get(meta.id));
-      }
-    });
 
   });
 }
