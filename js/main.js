@@ -691,9 +691,12 @@ function buildFlappySection() {
   const pipeSpeed = Number(config.pipeSpeed) || 175;
   const spawnInterval = Number(config.spawnInterval) || 1.32;
   const pipeWidth = 72;
+  const pipeScoreTriggerRatio = 1 / 6;
   const groundBandHeight = 40;
   const downTiltDelaySeconds = 0.3;
   const crashTiltDelaySeconds = 0.1;
+  const crashVelocityEaseInSeconds = 0.2;
+  const crashStartVelocity = 180;
   const birdSprite = new Image();
   const sfxFiles = {
     wing: "./assets/flappy/sfx_wing.wav",
@@ -713,20 +716,8 @@ function buildFlappySection() {
   const sfxBuffers = new Map();
   let pendingDieTimeoutId = 0;
   let birdSpriteReady = false;
-  let birdRenderSprite = null;
   birdSprite.addEventListener("load", () => {
     birdSpriteReady = true;
-    const targetSize = Math.max(1, Math.round(state.bird.radius * 3));
-    const preScaled = document.createElement("canvas");
-    preScaled.width = targetSize;
-    preScaled.height = targetSize;
-    const preScaledContext = preScaled.getContext("2d");
-    if (preScaledContext) {
-      preScaledContext.imageSmoothingEnabled = false;
-      preScaledContext.clearRect(0, 0, targetSize, targetSize);
-      preScaledContext.drawImage(birdSprite, 0, 0, targetSize, targetSize);
-      birdRenderSprite = preScaled;
-    }
   });
   birdSprite.src = "./assets/flappy/bird.png";
 
@@ -967,7 +958,7 @@ function buildFlappySection() {
       return;
     }
     state.mode = "crashing";
-    state.bird.vy = Math.max(state.bird.vy, 300);
+    state.bird.vy = Math.max(state.bird.vy, crashStartVelocity);
     state.bird.crashTiltTimer = 0;
     playCrashSfxSequence();
     setOverlay("");
@@ -1002,12 +993,16 @@ function buildFlappySection() {
       }
     }
 
-    const gravityScale =
-      state.mode === "crashing"
-        ? Math.max(1.05, fallGravityMultiplier * 0.75)
-        : state.bird.vy > 0
-          ? fallGravityMultiplier
-          : 1;
+    const gravityScale = (() => {
+      if (state.mode !== "crashing") {
+        return state.bird.vy > 0 ? fallGravityMultiplier : 1;
+      }
+      const crashGravityMin = Math.max(0.4, fallGravityMultiplier * 0.34);
+      const crashGravityMax = Math.max(1.05, fallGravityMultiplier * 0.75);
+      const crashRamp = Math.min(1, state.bird.crashTiltTimer / crashVelocityEaseInSeconds);
+      const easedCrashRamp = crashRamp * crashRamp;
+      return crashGravityMin + (crashGravityMax - crashGravityMin) * easedCrashRamp;
+    })();
     state.bird.vy += gravity * gravityScale * dt;
     state.bird.y += state.bird.vy * dt;
     if (state.mode === "crashing") {
@@ -1031,7 +1026,7 @@ function buildFlappySection() {
     if (state.mode === "playing") {
       state.pipes.forEach((pipe) => {
         pipe.x -= pipeSpeed * dt;
-        if (!pipe.passed && pipe.x + pipe.width < state.bird.x - state.bird.radius) {
+        if (!pipe.passed && pipe.x + pipe.width * pipeScoreTriggerRatio < state.bird.x) {
           pipe.passed = true;
           state.score += 1;
           playSfx("point");
@@ -1125,6 +1120,7 @@ function buildFlappySection() {
 
   function drawPipes() {
     const groundY = getGroundY();
+    const topPipeHiddenPixels = 6;
     const pipeOutline = "#543847";
     const pipeFill = "#73bf2e";
     const pipeHighlight = "#9de659";
@@ -1178,7 +1174,7 @@ function buildFlappySection() {
       const bottomY = pipe.gapBottom + capOffset;
       const bottomHeight = Math.max(10, groundY - bottomY);
 
-      drawPipeBody(pipe.x, 0, pipe.width, topHeight);
+      drawPipeBody(pipe.x, -topPipeHiddenPixels, pipe.width, topHeight + topPipeHiddenPixels);
       drawPipeCap(pipe.x, topHeight, pipe.width, true);
 
       drawPipeBody(pipe.x, bottomY, pipe.width, bottomHeight);
@@ -1195,10 +1191,9 @@ function buildFlappySection() {
     context.translate(state.bird.x, state.bird.y);
     context.rotate(tilt);
     if (birdSpriteReady) {
-      const sprite = birdRenderSprite || birdSprite;
-      const size = sprite === birdRenderSprite ? birdRenderSprite.width : state.bird.radius * 3;
+      const size = state.bird.radius * 3;
       context.imageSmoothingEnabled = false;
-      context.drawImage(sprite, -size * 0.5, -size * 0.5, size, size);
+      context.drawImage(birdSprite, -size * 0.5, -size * 0.5, size, size);
     } else {
       context.fillStyle = "#f2bc2b";
       context.beginPath();
