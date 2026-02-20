@@ -328,3 +328,56 @@ Original prompt: can you make a new app called flappy.exe? it will be a flappy b
 - Validation:
   - `node --check /Users/tt021/Desktop/web2/js/window-manager.js` passed.
   - Browser automation confirms lock class toggles correctly (`afterDown: true`, `afterCancel: false`).
+- minecraft.exe major rebuild (Dawn-like first-person, desktop + mobile, no avatar):
+  - Replaced `/Users/tt021/Desktop/web2/js/minecraft-app.js` with subsystem-style architecture:
+    - streaming `WorldStore` (deterministic terrain + overrides),
+    - worker-based meshing via `/Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js`,
+    - first-person controls with pointer-lock desktop + touch joystick/look mobile,
+    - explicit mouse release button,
+    - block break/place + hotbar 1..5,
+    - post-processing stack (`EffectComposer`, `RenderPass`, `UnrealBloomPass`, `ShaderPass`) with quality guard,
+    - window lifecycle pause/resume/dispose hooks.
+  - Fixed texture behavior in atlas/UV path:
+    - grass top face uses green top tile only,
+    - grass side has green strip at top edge,
+    - stone uses dedicated gray tile.
+  - Added local mirrored audio set + routing:
+    - files under `/Users/tt021/Desktop/web2/assets/minecraft/audio`.
+    - source mapping doc `/Users/tt021/Desktop/web2/assets/minecraft/README.md`.
+  - Updated `/Users/tt021/Desktop/web2/js/main.js` minecraft config for new interface fields (stream radii, postfx, mobile sensitivity, audio base path).
+  - Updated `/Users/tt021/Desktop/web2/css/style.css` minecraft UI styles:
+    - release button,
+    - mobile joystick/look/actions,
+    - responsive overlays/hotbar/status.
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js` passed.
+  - Playwright client smoke run against local server captured app render:
+    - `/Users/tt021/Desktop/web2/output/web-game-minecraft/shot-0.png`
+    - `/Users/tt021/Desktop/web2/output/web-game-minecraft-long/shot-0.png`
+    - `/Users/tt021/Desktop/web2/output/web-game-minecraft-long2/shot-0.png`
+  - No Playwright error JSON emitted in final smoke run directory.
+- TODO follow-up:
+  - Tune initial camera pitch and scene exposure for slightly brighter first-load view.
+  - Add mobile long-press repeat for break/place for faster building.
+- Follow-up fix: corrected `minecraft.exe` WASD basis in `/Users/tt021/Desktop/web2/js/minecraft-app.js`.
+  - Movement now derives forward/right from `camera.getWorldDirection(...)` projected to XZ plane.
+  - Prevents axis inversion/reversal when camera yaw changes.
+  - Syntax check passed: `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js`.
+- Shading fidelity pass for minecraft.exe (Dawn-like improvement):
+  - Updated `/Users/tt021/Desktop/web2/js/minecraft-app.js` render pipeline with desktop-first fidelity:
+    - enabled shadow mapping (PCF soft shadows),
+    - directional light now casts shadows and tracks player via target object,
+    - chunk meshes now cast/receive shadows,
+    - improved tone exposure and base ambient/hemisphere balance,
+    - added shadow-distance config support (`shadowDistanceDesktop`, `shadowDistanceMobile`),
+    - performance downshift guard now mobile-only and less aggressive.
+  - Updated `/Users/tt021/Desktop/web2/js/main.js` minecraft config with shadow-distance fields.
+- Validation:
+  - `node --check /Users/tt021/Desktop/web2/js/minecraft-app.js` passed.
+  - `node --check /Users/tt021/Desktop/web2/js/main.js` passed.
+  - Playwright capture after fidelity changes:
+    - `/Users/tt021/Desktop/web2/output/web-game-minecraft-shading2/shot-0.png`.
+- Grass side UV orientation fix:
+  - Updated `/Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js` `resolveUV()` for side faces to invert vertical mapping (`corner[1]`), so the grass-side green strip appears at the top edge.
+  - Syntax check passed: `node --check /Users/tt021/Desktop/web2/js/workers/minecraft-mesh-worker.js`.

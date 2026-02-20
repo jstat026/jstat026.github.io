@@ -1,6 +1,7 @@
 import * as animations from "./animations.js";
 import { createWindowManager } from "./window-manager.js";
 import { createCityRailNativeApp, destroyCityRailNativeApp, initCityRailNativeApp } from "./cityrail-native.js";
+import { createMinecraftSection } from "./minecraft-app.js";
 
 const portfolioData = {
   about: {
@@ -153,6 +154,30 @@ const portfolioData = {
     pipeSpeed: 190,
     spawnInterval: 1.2,
   },
+  minecraft: {
+    seed: 30117,
+    chunkSize: 16,
+    maxHeight: 48,
+    waterLevel: 10,
+    streamRadiusDesktop: 5,
+    streamRadiusMobile: 3,
+    moveSpeed: 8.7,
+    sprintMultiplier: 1.42,
+    crouchMultiplier: 0.58,
+    jumpSpeed: 9.5,
+    gravity: 26,
+    mouseSensitivity: 0.0021,
+    mobileLookSensitivity: 0.0042,
+    mobileMoveDeadzone: 0.12,
+    postFxProfile: "max",
+    fogDensity: 0.018,
+    bloomStrength: 0.45,
+    bloomRadius: 0.24,
+    bloomThreshold: 0.52,
+    shadowDistanceDesktop: 52,
+    shadowDistanceMobile: 30,
+    audioAssetBasePath: "./assets/minecraft/audio",
+  },
   music: {
     defaultTrack: "./assets/music/%E8%AA%AA%E8%AC%8A%E8%80%85.mp3",
   },
@@ -250,6 +275,18 @@ const windowMeta = [
     defaultPos: { x: 182, y: 92 },
     defaultSize: { w: 520, h: 300 },
     sectionKey: "music",
+  },
+  {
+    id: "minecraft",
+    exeName: "minecraft.exe",
+    title: "Minecraft",
+    icon: "./assets/icons/minecraft.svg",
+    defaultPos: { x: 124, y: 72 },
+    defaultSize: { w: 760, h: 520 },
+    sectionKey: "minecraft",
+    canResize: true,
+    canMaximize: true,
+    fixedSize: false,
   },
   {
     id: "cv",
@@ -1281,6 +1318,10 @@ function buildMusicSection() {
   return wrapper;
 }
 
+function buildMinecraftAppSection() {
+  return createMinecraftSection(portfolioData.minecraft || {});
+}
+
 function buildContactSection() {
   const wrapper = createElement("section", "contact-section");
   const links = portfolioData.contact.links
@@ -1656,6 +1697,8 @@ function buildSection(sectionKey, onMutation) {
       return buildFlappySection();
     case "music":
       return buildMusicSection();
+    case "minecraft":
+      return buildMinecraftAppSection();
     case "cv":
       return buildCvSection();
     case "contact":
@@ -1761,6 +1804,9 @@ function renderWindows() {
     if (meta.sectionKey === "flappy") {
       contentEl.classList.add("window-content-flappy");
     }
+    if (meta.sectionKey === "minecraft") {
+      contentEl.classList.add("window-content-minecraft");
+    }
 
     const shouldAddResizeHandles = meta.canResize !== false;
     if (shouldAddResizeHandles) {
@@ -1858,6 +1904,9 @@ function renderWindows() {
 
     createdWindow.addEventListener("keydown", async (event) => {
       if (event.key === "Escape") {
+        if (document.pointerLockElement) {
+          return;
+        }
         await manager.closeWindow(meta.id, iconMap.get(meta.id));
       }
     });
