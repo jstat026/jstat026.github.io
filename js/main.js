@@ -765,19 +765,6 @@ function buildFlappySection() {
     return sfxInitPromise;
   }
 
-  function primeSfxContext() {
-    if (!sfxContext || sfxContext.state !== "suspended") {
-      return;
-    }
-    try {
-      sfxContext.resume().catch(() => {
-        // ignore resume failures
-      });
-    } catch {
-      // ignore resume failures
-    }
-  }
-
   function playSfx(name) {
     if (!sfxContext) {
       return;
@@ -786,18 +773,34 @@ function buildFlappySection() {
     if (!buffer) {
       return;
     }
-    primeSfxContext();
-    try {
-      const source = sfxContext.createBufferSource();
-      source.buffer = buffer;
-      const gainNode = sfxContext.createGain();
-      gainNode.gain.value = sfxGain[name] || 0.4;
-      source.connect(gainNode);
-      gainNode.connect(sfxContext.destination);
-      source.start(0);
-    } catch {
-      // ignore audio playback failures
+
+    const startBuffer = () => {
+      try {
+        const source = sfxContext.createBufferSource();
+        source.buffer = buffer;
+        const gainNode = sfxContext.createGain();
+        gainNode.gain.value = sfxGain[name] || 0.4;
+        source.connect(gainNode);
+        gainNode.connect(sfxContext.destination);
+        source.start(0);
+      } catch {
+        // ignore audio playback failures
+      }
+    };
+
+    if (sfxContext.state === "suspended") {
+      sfxContext
+        .resume()
+        .then(() => {
+          startBuffer();
+        })
+        .catch(() => {
+          // ignore resume failures
+        });
+      return;
     }
+
+    startBuffer();
   }
 
   function clearPendingDieTimeout() {
@@ -1285,6 +1288,7 @@ function buildFlappySection() {
       return;
     }
     initSfx();
+    playSfx("wing");
     flap();
   }
 
