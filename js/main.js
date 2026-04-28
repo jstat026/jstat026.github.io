@@ -162,7 +162,7 @@ const portfolioData = {
     tracks: [
       {
         title: "說謊者",
-        artist: "Local library",
+        artist: "",
         src: "./assets/music/%E8%AA%AA%E8%AC%8A%E8%80%85.mp3",
       },
     ],
@@ -1349,14 +1349,14 @@ function buildMusicSection() {
     .filter((track) => track && typeof track.src === "string" && track.src.trim())
     .map((track) => ({
       title: typeof track.title === "string" && track.title.trim() ? track.title.trim() : "Untitled track",
-      artist: typeof track.artist === "string" && track.artist.trim() ? track.artist.trim() : "Unknown artist",
+      artist: typeof track.artist === "string" && track.artist.trim() ? track.artist.trim() : "",
       src: track.src.trim(),
     }));
 
   if (!tracks.some((track) => track.src === defaultTrack)) {
     tracks.unshift({
       title: "說謊者",
-      artist: "Local library",
+      artist: "",
       src: defaultTrack,
     });
   }
@@ -1376,7 +1376,10 @@ function buildMusicSection() {
     Night: [3, 1, -1, -3, -5],
   };
   const trackOptions = tracks
-    .map((track, index) => `<option value="${index}">${toSafeHTML(track.title)} - ${toSafeHTML(track.artist)}</option>`)
+    .map((track, index) => {
+      const label = track.artist ? `${track.title} - ${track.artist}` : track.title;
+      return `<option value="${index}">${toSafeHTML(label)}</option>`;
+    })
     .join("");
   const presetButtons = Object.keys(presets)
     .map((name) => `<button class="retro-btn music-preset" type="button" data-music-preset="${name}">${name}</button>`)
