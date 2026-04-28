@@ -906,6 +906,7 @@ function renderCombinedBuffer(buffers, context) {
 }
 
 function stopAnnouncement(state) {
+  state.announcementToken += 1;
   if (state.announcementSource) {
     try {
       state.announcementSource.stop();
@@ -918,7 +919,7 @@ function stopAnnouncement(state) {
   state.announcementActive = false;
 }
 
-async function playAudioSequence(state, entries) {
+async function playAudioSequence(state, entries, token) {
   if (!entries.length) {
     return;
   }
@@ -932,12 +933,19 @@ async function playAudioSequence(state, entries) {
   try {
     buffers = await fetchAudioBuffers(entries, context);
   } catch (error) {
+    if (token !== state.announcementToken || state.isDisposed) {
+      return;
+    }
     const message = String(error.message || "");
     if (message.startsWith("missing:")) {
       state.elements.announcementText.textContent = `Missing audio file: ${message.replace("missing:", "")}`;
       return;
     }
     state.elements.announcementText.textContent = "Audio load failed. Check local server path for train/audio.";
+    return;
+  }
+
+  if (token !== state.announcementToken || state.isDisposed) {
     return;
   }
 
@@ -1049,9 +1057,17 @@ async function playAudioSequence(state, entries) {
   state.announcementActive = true;
   state.announcementSource = source;
   source.onended = () => {
+    if (state.announcementSource !== source) {
+      return;
+    }
     state.announcementActive = false;
     state.announcementSource = null;
   };
+
+  if (token !== state.announcementToken || state.isDisposed) {
+    source.disconnect();
+    return;
+  }
 
   source.start();
 }
@@ -1297,6 +1313,10 @@ function applyTemplate(state, templateName) {
 async function playAnnouncement(state) {
   await ensureResources();
   stopAnnouncement(state);
+  if (state.isDisposed) {
+    return;
+  }
+  const token = state.announcementToken;
 
   const announcement = buildAnnouncement(state.config);
   if (!announcement) {
@@ -1306,7 +1326,7 @@ async function playAnnouncement(state) {
 
   state.elements.announcementText.textContent = announcement;
   const audioEntries = buildAnnouncementAudio(state.config);
-  await playAudioSequence(state, audioEntries);
+  await playAudioSequence(state, audioEntries, token);
 }
 
 export function createCityRailNativeApp() {
@@ -1488,6 +1508,8 @@ export function initCityRailNativeApp(root) {
     tickerId: 0,
     announcementSource: null,
     announcementActive: false,
+    announcementToken: 0,
+    isDisposed: false,
     pidResizeObserver: null,
     elements: {
       fields,
@@ -1580,6 +1602,7 @@ export function initCityRailNativeApp(root) {
   render(state);
 
   const cleanup = () => {
+    state.isDisposed = true;
     stopAnnouncement(state);
 
     if (state.stopRafId) {
