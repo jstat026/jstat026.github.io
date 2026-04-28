@@ -159,6 +159,13 @@ const portfolioData = {
   },
   music: {
     defaultTrack: "./assets/music/%E8%AA%AA%E8%AC%8A%E8%80%85.mp3",
+    tracks: [
+      {
+        title: "說謊者",
+        artist: "Local library",
+        src: "./assets/music/%E8%AA%AA%E8%AC%8A%E8%80%85.mp3",
+      },
+    ],
   },
   contact: {
     email: "alex.morgan@meridian.edu",
@@ -251,8 +258,8 @@ const windowMeta = [
     exeName: "music.exe",
     title: "Music Player",
     icon: "./assets/icons/music.svg",
-    defaultPos: { x: 182, y: 92 },
-    defaultSize: { w: 520, h: 300 },
+    defaultPos: { x: 156, y: 66 },
+    defaultSize: { w: 680, h: 520 },
     sectionKey: "music",
   },
   {
@@ -1332,59 +1339,209 @@ function buildFlappySection() {
 
 function buildMusicSection() {
   const wrapper = createElement("section", "music-section");
-  const configuredDefaultTrack = portfolioData.music?.defaultTrack;
+  const musicConfig = portfolioData.music || {};
+  const configuredDefaultTrack = musicConfig.defaultTrack;
   const defaultTrack = typeof configuredDefaultTrack === "string" && configuredDefaultTrack.trim()
     ? configuredDefaultTrack.trim()
     : "./assets/music/%E8%AA%AA%E8%AC%8A%E8%80%85.mp3";
+  const configuredTracks = Array.isArray(musicConfig.tracks) ? musicConfig.tracks : [];
+  const tracks = configuredTracks
+    .filter((track) => track && typeof track.src === "string" && track.src.trim())
+    .map((track) => ({
+      title: typeof track.title === "string" && track.title.trim() ? track.title.trim() : "Untitled track",
+      artist: typeof track.artist === "string" && track.artist.trim() ? track.artist.trim() : "Unknown artist",
+      src: track.src.trim(),
+    }));
+
+  if (!tracks.some((track) => track.src === defaultTrack)) {
+    tracks.unshift({
+      title: "說謊者",
+      artist: "Local library",
+      src: defaultTrack,
+    });
+  }
+
+  const eqBands = [
+    { label: "60Hz", frequency: 60, type: "lowshelf" },
+    { label: "250Hz", frequency: 250, type: "peaking" },
+    { label: "1kHz", frequency: 1000, type: "peaking" },
+    { label: "4kHz", frequency: 4000, type: "peaking" },
+    { label: "12kHz", frequency: 12000, type: "highshelf" },
+  ];
+  const presets = {
+    Flat: [0, 0, 0, 0, 0],
+    Bass: [7, 4, 0, -1, 1],
+    Vocal: [-2, 1, 5, 4, 1],
+    Bright: [-2, -1, 1, 5, 6],
+    Night: [3, 1, -1, -3, -5],
+  };
+  const trackOptions = tracks
+    .map((track, index) => `<option value="${index}">${toSafeHTML(track.title)} - ${toSafeHTML(track.artist)}</option>`)
+    .join("");
+  const presetButtons = Object.keys(presets)
+    .map((name) => `<button class="retro-btn music-preset" type="button" data-music-preset="${name}">${name}</button>`)
+    .join("");
+  const eqControls = eqBands
+    .map(
+      (band, index) => `
+        <label class="music-eq-band">
+          <span class="music-eq-band-label">${band.label}</span>
+          <input class="music-eq-slider" data-music-eq="${index}" type="range" min="-12" max="12" step="1" value="0" aria-label="${band.label} equalizer gain" />
+          <span class="music-eq-value" data-music-eq-value="${index}">0dB</span>
+        </label>`
+    )
+    .join("");
 
   wrapper.innerHTML = `
     <h3 class="section-heading" data-parallax="0.02">music.exe</h3>
-    <p class="music-help">Paste an MP3 URL. Leave it blank to play the default local track.</p>
-    <label class="music-link-row">
-      MP3 Link
-      <input class="retro-input" data-music-link type="url" placeholder="https://example.com/track.mp3" />
-    </label>
-    <div class="music-actions">
-      <button class="retro-btn" type="button" data-music-action="play">Play</button>
-      <button class="retro-btn" type="button" data-music-action="pause">Pause</button>
-      <button class="retro-btn" type="button" data-music-action="stop">Stop</button>
+    <div class="music-studio">
+      <div class="music-source-panel">
+        <label class="music-field">
+          <span>Library</span>
+          <select class="retro-input" data-music-library>${trackOptions}</select>
+        </label>
+        <label class="music-field music-field-wide">
+          <span>MP3 URL</span>
+          <input class="retro-input" data-music-link type="url" placeholder="https://example.com/track.mp3" />
+        </label>
+        <button class="retro-btn music-load-btn" type="button" data-music-action="load">Load</button>
+      </div>
+
+      <div class="music-main-grid">
+        <div class="music-deck">
+          <div class="music-visualizer-frame">
+            <canvas class="music-visualizer" data-music-visualizer aria-label="Audio visualizer"></canvas>
+          </div>
+
+          <div class="music-readout">
+            <div>
+              <p class="music-kicker">Now playing</p>
+              <p class="music-now-playing" data-music-now>說謊者</p>
+            </div>
+            <div>
+              <p class="music-kicker">Signal</p>
+              <p class="music-source-text" data-music-source>Local track - Web Audio ready</p>
+            </div>
+          </div>
+
+          <div class="music-transport">
+            <button class="retro-btn" type="button" data-music-action="play">Play</button>
+            <button class="retro-btn" type="button" data-music-action="pause">Pause</button>
+            <button class="retro-btn" type="button" data-music-action="stop">Stop</button>
+            <button class="retro-btn music-mode is-pressed" type="button" data-music-mode="bars">Bars</button>
+            <button class="retro-btn music-mode" type="button" data-music-mode="wave">Wave</button>
+          </div>
+
+          <div class="music-progress">
+            <span class="music-time" data-music-current>0:00</span>
+            <input class="music-progress-bar" data-music-progress type="range" min="0" max="1000" step="1" value="0" aria-label="Track progress" />
+            <span class="music-time music-time-end" data-music-duration>0:00</span>
+          </div>
+
+          <div class="music-output">
+            <label class="music-output-control">
+              <span>Volume</span>
+              <input data-music-volume type="range" min="0" max="100" step="1" value="85" />
+              <span data-music-volume-value>85%</span>
+            </label>
+            <label class="music-output-control">
+              <span>Balance</span>
+              <input data-music-balance type="range" min="-1" max="1" step="0.1" value="0" />
+              <span data-music-balance-value>C</span>
+            </label>
+          </div>
+
+          <p class="music-status" data-music-status>Ready.</p>
+        </div>
+
+        <aside class="music-eq-panel" aria-label="5 band equalizer">
+          <div class="music-panel-heading">
+            <span>5 Band EQ</span>
+            <button class="retro-btn music-reset-btn" type="button" data-music-reset>Reset</button>
+          </div>
+          <div class="music-presets">${presetButtons}</div>
+          <div class="music-eq-stack">${eqControls}</div>
+        </aside>
+      </div>
     </div>
-    <div class="music-progress">
-      <span class="music-time" data-music-current>0:00</span>
-      <input
-        class="music-progress-bar"
-        data-music-progress
-        type="range"
-        min="0"
-        max="1000"
-        step="1"
-        value="0"
-        aria-label="Track progress"
-      />
-      <span class="music-time music-time-end" data-music-duration>0:00</span>
-    </div>
-    <p class="music-now-playing">Source: <span data-music-source>Default track (assets/music/說謊者.mp3)</span></p>
-    <audio class="music-player" data-music-audio preload="metadata"></audio>
-    <p class="music-status" data-music-status>Ready.</p>
+    <audio class="music-player" data-music-audio preload="metadata" crossorigin="anonymous"></audio>
+    <audio class="music-player" data-music-direct-audio preload="metadata"></audio>
   `;
 
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext || null;
+  const libraryEl = wrapper.querySelector("[data-music-library]");
   const linkEl = wrapper.querySelector("[data-music-link]");
-  const audioEl = wrapper.querySelector("[data-music-audio]");
+  const processedAudioEl = wrapper.querySelector("[data-music-audio]");
+  const directAudioEl = wrapper.querySelector("[data-music-direct-audio]");
   const sourceEl = wrapper.querySelector("[data-music-source]");
+  const nowEl = wrapper.querySelector("[data-music-now]");
   const statusEl = wrapper.querySelector("[data-music-status]");
   const progressEl = wrapper.querySelector("[data-music-progress]");
   const currentTimeEl = wrapper.querySelector("[data-music-current]");
   const durationEl = wrapper.querySelector("[data-music-duration]");
+  const visualizerEl = wrapper.querySelector("[data-music-visualizer]");
+  const volumeEl = wrapper.querySelector("[data-music-volume]");
+  const volumeValueEl = wrapper.querySelector("[data-music-volume-value]");
+  const balanceEl = wrapper.querySelector("[data-music-balance]");
+  const balanceValueEl = wrapper.querySelector("[data-music-balance-value]");
+  const eqSliders = [...wrapper.querySelectorAll("[data-music-eq]")];
+  const eqValueEls = [...wrapper.querySelectorAll("[data-music-eq-value]")];
+  const modeButtons = [...wrapper.querySelectorAll("[data-music-mode]")];
+  const presetButtonMap = new Map(
+    [...wrapper.querySelectorAll("[data-music-preset]")].map((button) => [button.dataset.musicPreset, button])
+  );
+  const canvasContext = visualizerEl.getContext("2d");
+
+  let activeAudioEl = processedAudioEl;
+  let activeTrack = tracks[Number(libraryEl.value)] || tracks[0];
+  let audioContext = null;
+  let graph = null;
+  let graphMode = "processed";
+  let visualizerMode = "bars";
+  let animationFrameId = 0;
   let isSeeking = false;
+  let isMounted = true;
 
   function setStatus(text, isError = false) {
     statusEl.textContent = text;
     statusEl.classList.toggle("is-error", Boolean(isError));
   }
 
-  function getSelectedTrack() {
+  function getLibraryTrack() {
+    const index = Number(libraryEl.value);
+    return tracks[index] || tracks[0];
+  }
+
+  function getSelectedTrackInfo() {
     const provided = String(linkEl.value || "").trim();
-    return provided || defaultTrack;
+    if (provided) {
+      return {
+        title: "Supplied URL",
+        artist: "Remote source",
+        src: provided,
+        isCustom: true,
+      };
+    }
+    return getLibraryTrack();
+  }
+
+  function canProcessTrack(trackSrc) {
+    if (!AudioContextCtor) {
+      return false;
+    }
+    try {
+      const url = new URL(trackSrc, window.location.href);
+      return (
+        url.origin === window.location.origin ||
+        (url.protocol === "file:" && window.location.protocol === "file:")
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  function describeTrack(track) {
+    return track.artist ? `${track.title} - ${track.artist}` : track.title;
   }
 
   function formatTime(seconds) {
@@ -1397,9 +1554,17 @@ function buildMusicSection() {
     return `${mins}:${String(secs).padStart(2, "0")}`;
   }
 
+  function getActiveDuration() {
+    return Number.isFinite(activeAudioEl.duration) ? activeAudioEl.duration : 0;
+  }
+
+  function getActiveCurrentTime() {
+    return Number.isFinite(activeAudioEl.currentTime) ? activeAudioEl.currentTime : 0;
+  }
+
   function updateProgressUI() {
-    const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
-    const current = Number.isFinite(audioEl.currentTime) ? audioEl.currentTime : 0;
+    const duration = getActiveDuration();
+    const current = getActiveCurrentTime();
     currentTimeEl.textContent = formatTime(current);
     durationEl.textContent = formatTime(duration);
 
@@ -1409,49 +1574,380 @@ function buildMusicSection() {
     }
   }
 
-  function syncSourceLabel(track) {
-    const usingDefault = track === defaultTrack;
-    sourceEl.textContent = usingDefault ? "Default track (assets/music/說謊者.mp3)" : track;
+  function syncSourceLabel(track, isProcessed) {
+    nowEl.textContent = describeTrack(track);
+    if (isProcessed) {
+      sourceEl.textContent = "Local track - EQ and visualizer active";
+      return;
+    }
+    if (!AudioContextCtor) {
+      sourceEl.textContent = "Direct playback - Web Audio unavailable";
+      return;
+    }
+    sourceEl.textContent = track.isCustom
+      ? "Direct playback - remote analysis unavailable"
+      : "Direct playback - visualizer unavailable";
   }
 
-  function loadTrackFromInput() {
-    const track = getSelectedTrack();
-    const currentSource = audioEl.getAttribute("src") || "";
-    if (track !== currentSource) {
-      audioEl.setAttribute("src", track);
-      audioEl.load();
+  function resizeCanvas() {
+    const rect = visualizerEl.getBoundingClientRect();
+    const scale = Math.max(1, window.devicePixelRatio || 1);
+    const width = Math.max(1, Math.floor(rect.width * scale));
+    const height = Math.max(1, Math.floor(rect.height * scale));
+    if (visualizerEl.width !== width || visualizerEl.height !== height) {
+      visualizerEl.width = width;
+      visualizerEl.height = height;
+    }
+    return { width, height };
+  }
+
+  function drawIdleVisualizer() {
+    const { width, height } = resizeCanvas();
+    canvasContext.fillStyle = "#050805";
+    canvasContext.fillRect(0, 0, width, height);
+    canvasContext.strokeStyle = "rgba(84, 255, 138, 0.18)";
+    canvasContext.lineWidth = 1;
+    for (let x = 0; x < width; x += Math.max(18, width / 18)) {
+      canvasContext.beginPath();
+      canvasContext.moveTo(x, 0);
+      canvasContext.lineTo(x, height);
+      canvasContext.stroke();
+    }
+    for (let y = 0; y < height; y += Math.max(18, height / 8)) {
+      canvasContext.beginPath();
+      canvasContext.moveTo(0, y);
+      canvasContext.lineTo(width, y);
+      canvasContext.stroke();
+    }
+    canvasContext.fillStyle = "rgba(84, 255, 138, 0.36)";
+    for (let i = 0; i < 28; i += 1) {
+      const barWidth = width / 42;
+      const x = (i + 4) * (width / 36);
+      const barHeight = 8 + ((i * 11) % 34);
+      canvasContext.fillRect(x, height - barHeight - 18, barWidth, barHeight);
+    }
+  }
+
+  function drawVisualizerFrame() {
+    if (!isMounted) {
+      return;
+    }
+    const analyser = graph?.analyser;
+    if (!analyser || graphMode !== "processed" || activeAudioEl.paused) {
+      drawIdleVisualizer();
+      animationFrameId = 0;
+      return;
+    }
+
+    const { width, height } = resizeCanvas();
+    canvasContext.fillStyle = "#020402";
+    canvasContext.fillRect(0, 0, width, height);
+    canvasContext.strokeStyle = "rgba(91, 255, 151, 0.16)";
+    canvasContext.lineWidth = 1;
+    for (let y = height / 4; y < height; y += height / 4) {
+      canvasContext.beginPath();
+      canvasContext.moveTo(0, y);
+      canvasContext.lineTo(width, y);
+      canvasContext.stroke();
+    }
+
+    if (visualizerMode === "wave") {
+      const data = new Uint8Array(analyser.fftSize);
+      analyser.getByteTimeDomainData(data);
+      canvasContext.strokeStyle = "#7dff9e";
+      canvasContext.lineWidth = Math.max(2, width / 280);
+      canvasContext.beginPath();
+      data.forEach((value, index) => {
+        const x = (index / (data.length - 1)) * width;
+        const y = (value / 255) * height;
+        if (index === 0) {
+          canvasContext.moveTo(x, y);
+        } else {
+          canvasContext.lineTo(x, y);
+        }
+      });
+      canvasContext.stroke();
+    } else {
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(data);
+      const bars = 48;
+      const gap = Math.max(2, width / 260);
+      const barWidth = (width - gap * (bars - 1)) / bars;
+      const sampleSize = Math.max(1, Math.floor(data.length / bars));
+      for (let i = 0; i < bars; i += 1) {
+        let total = 0;
+        for (let sample = 0; sample < sampleSize; sample += 1) {
+          total += data[i * sampleSize + sample] || 0;
+        }
+        const value = total / sampleSize / 255;
+        const barHeight = Math.max(3, value * (height - 14));
+        const x = i * (barWidth + gap);
+        const y = height - barHeight;
+        const hue = 110 + value * 55;
+        canvasContext.fillStyle = `hsl(${hue}, 90%, ${44 + value * 24}%)`;
+        canvasContext.fillRect(x, y, barWidth, barHeight);
+      }
+    }
+
+    animationFrameId = window.requestAnimationFrame(drawVisualizerFrame);
+  }
+
+  function startVisualizer() {
+    if (animationFrameId) {
+      window.cancelAnimationFrame(animationFrameId);
+    }
+    animationFrameId = window.requestAnimationFrame(drawVisualizerFrame);
+  }
+
+  function stopVisualizer() {
+    if (animationFrameId) {
+      window.cancelAnimationFrame(animationFrameId);
+      animationFrameId = 0;
+    }
+    drawIdleVisualizer();
+  }
+
+  function getEqValues() {
+    return eqSliders.map((slider) => Number(slider.value) || 0);
+  }
+
+  function updateEqReadouts() {
+    getEqValues().forEach((value, index) => {
+      const prefix = value > 0 ? "+" : "";
+      eqValueEls[index].textContent = `${prefix}${value}dB`;
+    });
+  }
+
+  function setPressedPreset(name) {
+    presetButtonMap.forEach((button, presetName) => {
+      button.classList.toggle("is-pressed", presetName === name);
+    });
+  }
+
+  function applyEqToGraph() {
+    if (graph) {
+      getEqValues().forEach((value, index) => {
+        graph.filters[index].gain.value = value;
+      });
+    }
+    updateEqReadouts();
+  }
+
+  function applyPreset(name) {
+    const values = presets[name] || presets.Flat;
+    eqSliders.forEach((slider, index) => {
+      slider.value = String(values[index] || 0);
+    });
+    setPressedPreset(name);
+    applyEqToGraph();
+  }
+
+  function updateOutputControls() {
+    const volume = Math.max(0, Math.min(100, Number(volumeEl.value) || 0));
+    const balance = Math.max(-1, Math.min(1, Number(balanceEl.value) || 0));
+    processedAudioEl.volume = 1;
+    directAudioEl.volume = graphMode === "direct" ? volume / 100 : 0;
+    volumeValueEl.textContent = `${volume}%`;
+    balanceValueEl.textContent = balance === 0 ? "C" : `${balance < 0 ? "L" : "R"}${Math.abs(balance).toFixed(1)}`;
+    if (graph) {
+      graph.masterGain.gain.value = volume / 100;
+      if (graph.panner) {
+        graph.panner.pan.value = balance;
+      }
+    }
+  }
+
+  async function ensureAudioGraph() {
+    if (!AudioContextCtor) {
+      return false;
+    }
+    if (graph) {
+      return true;
+    }
+    try {
+      try {
+        audioContext = new AudioContextCtor({ latencyHint: "interactive" });
+      } catch {
+        audioContext = new AudioContextCtor();
+      }
+      const source = audioContext.createMediaElementSource(processedAudioEl);
+      const filters = eqBands.map((band) => {
+        const filter = audioContext.createBiquadFilter();
+        filter.type = band.type;
+        filter.frequency.value = band.frequency;
+        filter.Q.value = band.type === "peaking" ? 1.1 : 0.7;
+        filter.gain.value = 0;
+        return filter;
+      });
+      const masterGain = audioContext.createGain();
+      const panner = typeof audioContext.createStereoPanner === "function"
+        ? audioContext.createStereoPanner()
+        : null;
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.78;
+
+      source.connect(filters[0]);
+      filters.forEach((filter, index) => {
+        filter.connect(filters[index + 1] || masterGain);
+      });
+      if (panner) {
+        masterGain.connect(panner);
+        panner.connect(analyser);
+      } else {
+        masterGain.connect(analyser);
+      }
+      analyser.connect(audioContext.destination);
+      graph = { source, filters, masterGain, panner, analyser };
+      applyEqToGraph();
+      updateOutputControls();
+      return true;
+    } catch {
+      graph = null;
+      audioContext = null;
+      return false;
+    }
+  }
+
+  async function activateTrack(track) {
+    const processable = canProcessTrack(track.src);
+    const canUseGraph = processable ? await ensureAudioGraph() : false;
+    const nextAudioEl = canUseGraph ? processedAudioEl : directAudioEl;
+    const inactiveAudioEl = nextAudioEl === processedAudioEl ? directAudioEl : processedAudioEl;
+    inactiveAudioEl.pause();
+
+    graphMode = canUseGraph ? "processed" : "direct";
+    activeAudioEl = nextAudioEl;
+    activeTrack = track;
+
+    if ((activeAudioEl.getAttribute("src") || "") !== track.src) {
+      activeAudioEl.setAttribute("src", track.src);
+      activeAudioEl.load();
       progressEl.value = "0";
       currentTimeEl.textContent = "0:00";
       durationEl.textContent = "0:00";
     }
-    syncSourceLabel(track);
-    return track;
+
+    syncSourceLabel(track, canUseGraph);
+    updateOutputControls();
+    updateProgressUI();
+    return { track, isProcessed: canUseGraph, isRemoteFallback: !canUseGraph && !processable };
+  }
+
+  async function loadTrackFromInput() {
+    return activateTrack(getSelectedTrackInfo());
   }
 
   async function playSelectedTrack() {
-    const track = loadTrackFromInput();
+    const { track, isProcessed, isRemoteFallback } = await loadTrackFromInput();
     try {
-      await audioEl.play();
-      setStatus(track === defaultTrack ? "Playing default track." : "Playing supplied link.");
+      if (isProcessed && audioContext?.state === "suspended") {
+        await audioContext.resume();
+      }
+      await activeAudioEl.play();
+      if (isProcessed) {
+        setStatus("Playing with equalizer and visualizer.");
+        startVisualizer();
+      } else if (isRemoteFallback || track.isCustom) {
+        setStatus("Playing direct. Remote links may block EQ and visualizer.");
+        stopVisualizer();
+      } else {
+        setStatus("Playing direct. Web Audio processing is unavailable.");
+        stopVisualizer();
+      }
     } catch {
-      setStatus("Unable to play this source. Check that the link is a reachable MP3.", true);
+      setStatus("Unable to play this source. Check that the link is reachable.", true);
+      stopVisualizer();
     }
   }
+
+  function setCurrentTimeFromProgress() {
+    const duration = getActiveDuration();
+    if (duration <= 0) {
+      return;
+    }
+    const ratio = Number(progressEl.value) / 1000;
+    activeAudioEl.currentTime = Math.min(duration, Math.max(0, duration * ratio));
+    updateProgressUI();
+  }
+
+  function bindMediaEvents(audioEl) {
+    audioEl.addEventListener("loadedmetadata", () => {
+      if (audioEl === activeAudioEl) {
+        updateProgressUI();
+      }
+    });
+    audioEl.addEventListener("timeupdate", () => {
+      if (audioEl === activeAudioEl) {
+        updateProgressUI();
+      }
+    });
+    audioEl.addEventListener("play", () => {
+      if (audioEl === activeAudioEl) {
+        updateProgressUI();
+        if (graphMode === "processed") {
+          startVisualizer();
+        }
+      }
+    });
+    audioEl.addEventListener("pause", () => {
+      if (audioEl === activeAudioEl) {
+        updateProgressUI();
+        stopVisualizer();
+      }
+    });
+    audioEl.addEventListener("ended", () => {
+      if (audioEl === activeAudioEl) {
+        updateProgressUI();
+        setStatus("Playback finished.");
+        stopVisualizer();
+      }
+    });
+    audioEl.addEventListener("error", () => {
+      if (audioEl === activeAudioEl) {
+        setStatus("Audio load failed for this source.", true);
+        stopVisualizer();
+      }
+    });
+  }
+
+  wrapper.querySelector('[data-music-action="load"]').addEventListener("click", async () => {
+    const { isProcessed } = await loadTrackFromInput();
+    setStatus(isProcessed ? "Loaded for EQ and visualizer." : "Loaded for direct playback.");
+    stopVisualizer();
+  });
+
+  libraryEl.addEventListener("change", () => {
+    linkEl.value = "";
+    const track = getLibraryTrack();
+    nowEl.textContent = describeTrack(track);
+    sourceEl.textContent = canProcessTrack(track.src)
+      ? "Local track - Web Audio ready"
+      : "Direct playback - visualizer unavailable";
+  });
+
+  linkEl.addEventListener("input", () => {
+    if (String(linkEl.value || "").trim()) {
+      nowEl.textContent = "Supplied URL";
+      sourceEl.textContent = "Direct playback until loaded";
+    }
+  });
 
   wrapper.querySelector('[data-music-action="play"]').addEventListener("click", () => {
     playSelectedTrack();
   });
 
   wrapper.querySelector('[data-music-action="pause"]').addEventListener("click", () => {
-    audioEl.pause();
+    activeAudioEl.pause();
     setStatus("Paused.");
   });
 
   wrapper.querySelector('[data-music-action="stop"]').addEventListener("click", () => {
-    audioEl.pause();
-    audioEl.currentTime = 0;
+    activeAudioEl.pause();
+    activeAudioEl.currentTime = 0;
     updateProgressUI();
     setStatus("Stopped.");
+    stopVisualizer();
   });
 
   linkEl.addEventListener("keydown", (event) => {
@@ -1462,31 +1958,12 @@ function buildMusicSection() {
     playSelectedTrack();
   });
 
-  audioEl.addEventListener("loadedmetadata", () => {
-    const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
-    updateProgressUI();
-    if (duration > 0) {
-      setStatus(`Loaded (${duration.toFixed(1)}s).`);
-    }
-  });
-
-  audioEl.addEventListener("timeupdate", updateProgressUI);
-  audioEl.addEventListener("play", updateProgressUI);
-  audioEl.addEventListener("pause", updateProgressUI);
-
   progressEl.addEventListener("pointerdown", () => {
     isSeeking = true;
   });
 
   progressEl.addEventListener("input", () => {
-    const duration = Number.isFinite(audioEl.duration) ? audioEl.duration : 0;
-    if (duration <= 0) {
-      return;
-    }
-    const ratio = Number(progressEl.value) / 1000;
-    const targetTime = Math.min(duration, Math.max(0, duration * ratio));
-    audioEl.currentTime = targetTime;
-    updateProgressUI();
+    setCurrentTimeFromProgress();
   });
 
   progressEl.addEventListener("change", () => {
@@ -1498,22 +1975,73 @@ function buildMusicSection() {
     isSeeking = false;
   });
 
-  audioEl.addEventListener("ended", () => {
-    updateProgressUI();
-    setStatus("Playback finished.");
+  modeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      visualizerMode = button.dataset.musicMode === "wave" ? "wave" : "bars";
+      modeButtons.forEach((modeButton) => {
+        modeButton.classList.toggle("is-pressed", modeButton === button);
+      });
+      if (graphMode === "processed" && !activeAudioEl.paused) {
+        startVisualizer();
+      } else {
+        drawIdleVisualizer();
+      }
+    });
   });
 
-  audioEl.addEventListener("error", () => {
-    setStatus("Audio load failed for this source.", true);
+  eqSliders.forEach((slider) => {
+    slider.addEventListener("input", () => {
+      setPressedPreset(null);
+      applyEqToGraph();
+    });
   });
 
-  syncSourceLabel(defaultTrack);
+  presetButtonMap.forEach((button, presetName) => {
+    button.addEventListener("click", () => {
+      applyPreset(presetName);
+    });
+  });
+
+  wrapper.querySelector("[data-music-reset]").addEventListener("click", () => {
+    applyPreset("Flat");
+  });
+
+  volumeEl.addEventListener("input", updateOutputControls);
+  balanceEl.addEventListener("input", updateOutputControls);
+  bindMediaEvents(processedAudioEl);
+  bindMediaEvents(directAudioEl);
+
+  applyPreset("Flat");
+  syncSourceLabel(activeTrack, canProcessTrack(activeTrack.src));
+  sourceEl.textContent = canProcessTrack(activeTrack.src)
+    ? "Local track - Web Audio ready"
+    : "Direct playback - visualizer unavailable";
+  updateOutputControls();
   updateProgressUI();
+  drawIdleVisualizer();
 
   wrapper.cleanup = () => {
-    audioEl.pause();
-    audioEl.removeAttribute("src");
-    audioEl.load();
+    isMounted = false;
+    stopVisualizer();
+    [processedAudioEl, directAudioEl].forEach((audioEl) => {
+      audioEl.pause();
+      audioEl.removeAttribute("src");
+      audioEl.load();
+    });
+    if (graph) {
+      graph.filters.forEach((filter) => filter.disconnect());
+      graph.source.disconnect();
+      graph.masterGain.disconnect();
+      graph.panner?.disconnect();
+      graph.analyser.disconnect();
+      graph = null;
+    }
+    if (audioContext && audioContext.state !== "closed") {
+      audioContext.close().catch(() => {
+        // ignore close failures during window teardown
+      });
+    }
+    audioContext = null;
   };
 
   return wrapper;
