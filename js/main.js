@@ -1504,10 +1504,26 @@ function buildMusicSection() {
   let animationFrameId = 0;
   let isSeeking = false;
   let isMounted = true;
+  let backgroundDirectHandoff = false;
 
   function setStatus(text, isError = false) {
     statusEl.textContent = text;
     statusEl.classList.toggle("is-error", Boolean(isError));
+  }
+
+  function syncMediaSession(playbackState = activeAudioEl.paused ? "paused" : "playing") {
+    if (!("mediaSession" in navigator)) {
+      return;
+    }
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: activeTrack?.title || "music.exe",
+        artist: activeTrack?.artist || "",
+      });
+      navigator.mediaSession.playbackState = playbackState;
+    } catch {
+      // ignore Media Session API differences across browsers
+    }
   }
 
   function getLibraryTrack() {
@@ -1760,6 +1776,65 @@ function buildMusicSection() {
     }
   }
 
+  function ensureDirectAudioPrepared(track) {
+    if ((directAudioEl.getAttribute("src") || "") !== track.src) {
+      directAudioEl.setAttribute("src", track.src);
+      directAudioEl.load();
+    } else if (directAudioEl.readyState < 1) {
+      directAudioEl.load();
+    }
+  }
+
+  async function seekWhenReady(audioEl, seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      return;
+    }
+    if (audioEl.readyState < 1) {
+      await new Promise((resolve) => {
+        const done = () => {
+          audioEl.removeEventListener("loadedmetadata", done);
+          audioEl.removeEventListener("error", done);
+          resolve();
+        };
+        audioEl.addEventListener("loadedmetadata", done, { once: true });
+        audioEl.addEventListener("error", done, { once: true });
+        window.setTimeout(done, 800);
+      });
+    }
+    try {
+      audioEl.currentTime = seconds;
+    } catch {
+      // keep playback alive even if a browser rejects a background seek
+    }
+  }
+
+  function scheduleSeekWhenReady(audioEl, seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      return;
+    }
+    const seek = () => {
+      try {
+        audioEl.currentTime = seconds;
+      } catch {
+        // keep playback alive if the browser rejects the seek
+      }
+    };
+    if (audioEl.readyState >= 1) {
+      seek();
+    } else {
+      audioEl.addEventListener("loadedmetadata", seek, { once: true });
+    }
+  }
+
+  function startDirectShadow(track, seconds) {
+    ensureDirectAudioPrepared(track);
+    scheduleSeekWhenReady(directAudioEl, seconds);
+    directAudioEl.volume = 0;
+    directAudioEl.play().catch(() => {
+      // shadow playback is an optimization; the explicit background handoff can still try later
+    });
+  }
+
   async function ensureAudioGraph() {
     if (!AudioContextCtor) {
       return false;
@@ -1813,6 +1888,9 @@ function buildMusicSection() {
   }
 
   async function activateTrack(track) {
+    const previousAudioEl = activeAudioEl;
+    const previousTrack = activeTrack;
+    const previousTime = getActiveCurrentTime();
     const processable = canProcessTrack(track.src);
     const canUseGraph = processable ? await ensureAudioGraph() : false;
     const nextAudioEl = canUseGraph ? processedAudioEl : directAudioEl;
@@ -1830,10 +1908,17 @@ function buildMusicSection() {
       currentTimeEl.textContent = "0:00";
       durationEl.textContent = "0:00";
     }
+    if (previousAudioEl !== nextAudioEl && previousTrack?.src === track.src) {
+      await seekWhenReady(activeAudioEl, previousTime);
+    }
+    if (canUseGraph) {
+      ensureDirectAudioPrepared(track);
+    }
 
     syncSourceLabel(track, canUseGraph);
     updateOutputControls();
     updateProgressUI();
+    syncMediaSession();
     return { track, isProcessed: canUseGraph, isRemoteFallback: !canUseGraph && !processable };
   }
 
@@ -1842,14 +1927,34 @@ function buildMusicSection() {
   }
 
   async function playSelectedTrack() {
+    const selectedTrack = getSelectedTrackInfo();
+    if (activeAudioEl === directAudioEl && !directAudioEl.paused && (directAudioEl.getAttribute("src") || "") === selectedTrack.src) {
+      setStatus("Playing direct for background compatibility.");
+      syncMediaSession("playing");
+      return;
+    }
+    const resumeFromDirect = activeAudioEl === directAudioEl && !directAudioEl.paused;
+    const resumeTime = resumeFromDirect ? directAudioEl.currentTime : 0;
+    const directSource = directAudioEl.getAttribute("src") || "";
     const { track, isProcessed, isRemoteFallback } = await loadTrackFromInput();
     try {
       if (isProcessed && audioContext?.state === "suspended") {
         await audioContext.resume();
       }
+      if (isProcessed && resumeFromDirect && directSource === track.src) {
+        await seekWhenReady(activeAudioEl, resumeTime);
+      }
       await activeAudioEl.play();
+      if (isProcessed && resumeFromDirect && directSource === track.src) {
+        try {
+          activeAudioEl.currentTime = resumeTime;
+        } catch {
+          // keep playback running if the browser rejects a late restore seek
+        }
+      }
       if (isProcessed) {
         setStatus("Playing with equalizer and visualizer.");
+        startDirectShadow(track, activeAudioEl.currentTime);
         startVisualizer();
       } else if (isRemoteFallback || track.isCustom) {
         setStatus("Playing direct. Remote links may block EQ and visualizer.");
@@ -1858,9 +1963,91 @@ function buildMusicSection() {
         setStatus("Playing direct. Web Audio processing is unavailable.");
         stopVisualizer();
       }
+      syncMediaSession("playing");
     } catch {
       setStatus("Unable to play this source. Check that the link is reachable.", true);
       stopVisualizer();
+      syncMediaSession("paused");
+    }
+  }
+
+  function pausePlayback() {
+    [processedAudioEl, directAudioEl].forEach((audioEl) => audioEl.pause());
+    setStatus("Paused.");
+    syncMediaSession("paused");
+  }
+
+  function stopPlayback() {
+    [processedAudioEl, directAudioEl].forEach((audioEl) => {
+      audioEl.pause();
+      try {
+        audioEl.currentTime = 0;
+      } catch {
+        // ignore media elements that have not loaded a source yet
+      }
+    });
+    updateProgressUI();
+    setStatus("Stopped.");
+    stopVisualizer();
+    syncMediaSession("none");
+  }
+
+  async function handOffToDirectForBackground() {
+    if (
+      !isMounted ||
+      backgroundDirectHandoff ||
+      activeAudioEl !== processedAudioEl ||
+      processedAudioEl.paused ||
+      !activeTrack ||
+      !canProcessTrack(activeTrack.src)
+    ) {
+      return;
+    }
+
+    const currentTime = processedAudioEl.currentTime;
+    ensureDirectAudioPrepared(activeTrack);
+    scheduleSeekWhenReady(directAudioEl, currentTime);
+    processedAudioEl.pause();
+    graphMode = "direct";
+    activeAudioEl = directAudioEl;
+    backgroundDirectHandoff = true;
+    updateOutputControls();
+    setStatus("Playing in background with native audio.");
+    stopVisualizer();
+    updateProgressUI();
+    syncMediaSession("playing");
+    if (directAudioEl.paused) {
+      directAudioEl.play().catch(() => {
+        graphMode = "processed";
+        activeAudioEl = processedAudioEl;
+        backgroundDirectHandoff = false;
+        updateOutputControls();
+        processedAudioEl.play().catch(() => {
+          // the browser may already be suspending foreground playback
+        });
+        syncMediaSession("playing");
+      });
+    }
+    audioContext?.suspend?.().catch(() => {
+      // browsers may reject suspension during lifecycle transitions
+    });
+  }
+
+  async function restoreProcessedAfterBackground() {
+    if (!isMounted || !backgroundDirectHandoff) {
+      return;
+    }
+
+    backgroundDirectHandoff = false;
+    graphMode = "direct";
+    activeAudioEl = directAudioEl;
+    updateOutputControls();
+    updateProgressUI();
+    if (!directAudioEl.paused) {
+      setStatus("Playing direct for background compatibility.");
+      syncMediaSession("playing");
+    } else {
+      syncMediaSession("paused");
     }
   }
 
@@ -1891,12 +2078,14 @@ function buildMusicSection() {
         if (graphMode === "processed") {
           startVisualizer();
         }
+        syncMediaSession("playing");
       }
     });
     audioEl.addEventListener("pause", () => {
       if (audioEl === activeAudioEl) {
         updateProgressUI();
         stopVisualizer();
+        syncMediaSession("paused");
       }
     });
     audioEl.addEventListener("ended", () => {
@@ -1904,12 +2093,14 @@ function buildMusicSection() {
         updateProgressUI();
         setStatus("Playback finished.");
         stopVisualizer();
+        syncMediaSession("none");
       }
     });
     audioEl.addEventListener("error", () => {
       if (audioEl === activeAudioEl) {
         setStatus("Audio load failed for this source.", true);
         stopVisualizer();
+        syncMediaSession("paused");
       }
     });
   }
@@ -1941,16 +2132,11 @@ function buildMusicSection() {
   });
 
   wrapper.querySelector('[data-music-action="pause"]').addEventListener("click", () => {
-    activeAudioEl.pause();
-    setStatus("Paused.");
+    pausePlayback();
   });
 
   wrapper.querySelector('[data-music-action="stop"]').addEventListener("click", () => {
-    activeAudioEl.pause();
-    activeAudioEl.currentTime = 0;
-    updateProgressUI();
-    setStatus("Stopped.");
-    stopVisualizer();
+    stopPlayback();
   });
 
   linkEl.addEventListener("keydown", (event) => {
@@ -2011,6 +2197,25 @@ function buildMusicSection() {
 
   volumeEl.addEventListener("input", updateOutputControls);
   balanceEl.addEventListener("input", updateOutputControls);
+  function handleVisibilityChange() {
+    if (document.visibilityState === "hidden") {
+      handOffToDirectForBackground();
+    } else {
+      restoreProcessedAfterBackground();
+    }
+  }
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  if ("mediaSession" in navigator) {
+    try {
+      navigator.mediaSession.setActionHandler("play", () => {
+        playSelectedTrack();
+      });
+      navigator.mediaSession.setActionHandler("pause", pausePlayback);
+      navigator.mediaSession.setActionHandler("stop", stopPlayback);
+    } catch {
+      // ignore unsupported media action handlers
+    }
+  }
   bindMediaEvents(processedAudioEl);
   bindMediaEvents(directAudioEl);
 
@@ -2025,6 +2230,16 @@ function buildMusicSection() {
 
   wrapper.cleanup = () => {
     isMounted = false;
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.setActionHandler("play", null);
+        navigator.mediaSession.setActionHandler("pause", null);
+        navigator.mediaSession.setActionHandler("stop", null);
+      } catch {
+        // ignore unsupported media action handlers
+      }
+    }
     stopVisualizer();
     [processedAudioEl, directAudioEl].forEach((audioEl) => {
       audioEl.pause();

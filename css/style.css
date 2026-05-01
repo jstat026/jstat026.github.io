@@ -827,6 +827,7 @@ select {
 }
 
 .music-visualizer-frame {
+  position: relative;
   min-height: 150px;
   border: 2px solid;
   border-color: #050505 #66a373 #66a373 #050505;
@@ -837,8 +838,11 @@ select {
 
 .music-visualizer {
   display: block;
+  position: absolute;
+  inset: 6px;
   width: 100%;
-  height: 100%;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
   min-height: 138px;
   background: #050805;
   image-rendering: pixelated;
@@ -2392,8 +2396,19 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .music-section {
+    height: auto;
+    display: block;
+  }
+
+  .music-studio {
+    min-height: auto;
+    grid-template-rows: none;
+  }
+
   .music-main-grid {
     grid-template-columns: 1fr;
+    min-height: auto;
   }
 
   .music-eq-panel {
@@ -2507,20 +2522,56 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .music-section {
+    height: auto;
+    display: block;
+  }
+
+  .music-studio {
+    min-height: auto;
+    grid-template-rows: none;
+  }
+
   .music-main-grid {
     grid-template-columns: 1fr;
+    min-height: auto;
   }
 
   .music-deck {
-    grid-template-rows: minmax(120px, 180px) auto auto auto auto auto;
+    min-height: auto;
+    display: flex;
+    flex-direction: column;
   }
 
   .music-visualizer-frame {
-    min-height: 120px;
+    order: 5;
+    flex: 0 0 108px;
+    height: 108px;
+    min-height: 0;
   }
 
   .music-visualizer {
-    min-height: 108px;
+    min-height: 0;
+  }
+
+  .music-readout {
+    order: 4;
+  }
+
+  .music-transport {
+    order: 1;
+  }
+
+  .music-progress {
+    order: 2;
+  }
+
+  .music-output {
+    order: 3;
+  }
+
+  .music-status {
+    order: 6;
   }
 
   .music-readout,
