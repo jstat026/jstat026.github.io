@@ -1504,7 +1504,6 @@ function buildMusicSection() {
   let animationFrameId = 0;
   let isSeeking = false;
   let isMounted = true;
-  let backgroundDirectHandoff = false;
 
   function setStatus(text, isError = false) {
     statusEl.textContent = text;
@@ -1544,10 +1543,7 @@ function buildMusicSection() {
     return getLibraryTrack();
   }
 
-  function canProcessTrack(trackSrc) {
-    if (!AudioContextCtor) {
-      return false;
-    }
+  function isSameOriginOrFileTrack(trackSrc) {
     try {
       const url = new URL(trackSrc, window.location.href);
       return (
@@ -1557,6 +1553,10 @@ function buildMusicSection() {
     } catch {
       return false;
     }
+  }
+
+  function canProcessTrack(trackSrc) {
+    return Boolean(AudioContextCtor && isSameOriginOrFileTrack(trackSrc));
   }
 
   function describeTrack(track) {
@@ -1776,15 +1776,6 @@ function buildMusicSection() {
     }
   }
 
-  function ensureDirectAudioPrepared(track) {
-    if ((directAudioEl.getAttribute("src") || "") !== track.src) {
-      directAudioEl.setAttribute("src", track.src);
-      directAudioEl.load();
-    } else if (directAudioEl.readyState < 1) {
-      directAudioEl.load();
-    }
-  }
-
   async function seekWhenReady(audioEl, seconds) {
     if (!Number.isFinite(seconds) || seconds <= 0) {
       return;
@@ -1806,33 +1797,6 @@ function buildMusicSection() {
     } catch {
       // keep playback alive even if a browser rejects a background seek
     }
-  }
-
-  function scheduleSeekWhenReady(audioEl, seconds) {
-    if (!Number.isFinite(seconds) || seconds <= 0) {
-      return;
-    }
-    const seek = () => {
-      try {
-        audioEl.currentTime = seconds;
-      } catch {
-        // keep playback alive if the browser rejects the seek
-      }
-    };
-    if (audioEl.readyState >= 1) {
-      seek();
-    } else {
-      audioEl.addEventListener("loadedmetadata", seek, { once: true });
-    }
-  }
-
-  function startDirectShadow(track, seconds) {
-    ensureDirectAudioPrepared(track);
-    scheduleSeekWhenReady(directAudioEl, seconds);
-    directAudioEl.volume = 0;
-    directAudioEl.play().catch(() => {
-      // shadow playback is an optimization; the explicit background handoff can still try later
-    });
   }
 
   async function ensureAudioGraph() {
@@ -1911,15 +1875,11 @@ function buildMusicSection() {
     if (previousAudioEl !== nextAudioEl && previousTrack?.src === track.src) {
       await seekWhenReady(activeAudioEl, previousTime);
     }
-    if (canUseGraph) {
-      ensureDirectAudioPrepared(track);
-    }
-
     syncSourceLabel(track, canUseGraph);
     updateOutputControls();
     updateProgressUI();
     syncMediaSession();
-    return { track, isProcessed: canUseGraph, isRemoteFallback: !canUseGraph && !processable };
+    return { track, isProcessed: canUseGraph, isRemoteFallback: !canUseGraph && !isSameOriginOrFileTrack(track.src) };
   }
 
   async function loadTrackFromInput() {
@@ -1929,7 +1889,9 @@ function buildMusicSection() {
   async function playSelectedTrack() {
     const selectedTrack = getSelectedTrackInfo();
     if (activeAudioEl === directAudioEl && !directAudioEl.paused && (directAudioEl.getAttribute("src") || "") === selectedTrack.src) {
-      setStatus("Playing direct for background compatibility.");
+      setStatus(selectedTrack.isCustom || !isSameOriginOrFileTrack(selectedTrack.src)
+        ? "Playing direct. Remote links may block EQ and visualizer."
+        : "Playing direct. Web Audio processing is unavailable.");
       syncMediaSession("playing");
       return;
     }
@@ -1954,7 +1916,6 @@ function buildMusicSection() {
       }
       if (isProcessed) {
         setStatus("Playing with equalizer and visualizer.");
-        startDirectShadow(track, activeAudioEl.currentTime);
         startVisualizer();
       } else if (isRemoteFallback || track.isCustom) {
         setStatus("Playing direct. Remote links may block EQ and visualizer.");
@@ -1990,65 +1951,6 @@ function buildMusicSection() {
     setStatus("Stopped.");
     stopVisualizer();
     syncMediaSession("none");
-  }
-
-  async function handOffToDirectForBackground() {
-    if (
-      !isMounted ||
-      backgroundDirectHandoff ||
-      activeAudioEl !== processedAudioEl ||
-      processedAudioEl.paused ||
-      !activeTrack ||
-      !canProcessTrack(activeTrack.src)
-    ) {
-      return;
-    }
-
-    const currentTime = processedAudioEl.currentTime;
-    ensureDirectAudioPrepared(activeTrack);
-    scheduleSeekWhenReady(directAudioEl, currentTime);
-    processedAudioEl.pause();
-    graphMode = "direct";
-    activeAudioEl = directAudioEl;
-    backgroundDirectHandoff = true;
-    updateOutputControls();
-    setStatus("Playing in background with native audio.");
-    stopVisualizer();
-    updateProgressUI();
-    syncMediaSession("playing");
-    if (directAudioEl.paused) {
-      directAudioEl.play().catch(() => {
-        graphMode = "processed";
-        activeAudioEl = processedAudioEl;
-        backgroundDirectHandoff = false;
-        updateOutputControls();
-        processedAudioEl.play().catch(() => {
-          // the browser may already be suspending foreground playback
-        });
-        syncMediaSession("playing");
-      });
-    }
-    audioContext?.suspend?.().catch(() => {
-      // browsers may reject suspension during lifecycle transitions
-    });
-  }
-
-  async function restoreProcessedAfterBackground() {
-    if (!isMounted || !backgroundDirectHandoff) {
-      return;
-    }
-
-    backgroundDirectHandoff = false;
-    graphMode = "direct";
-    activeAudioEl = directAudioEl;
-    updateOutputControls();
-    updateProgressUI();
-    if (!directAudioEl.paused) {
-      setStatus("Playing direct for background compatibility.");
-      syncMediaSession("playing");
-    } else {
-      syncMediaSession("paused");
-    }
   }
 
   function setCurrentTimeFromProgress() {
@@ -2114,10 +2016,7 @@ function buildMusicSection() {
   libraryEl.addEventListener("change", () => {
     linkEl.value = "";
     const track = getLibraryTrack();
-    nowEl.textContent = describeTrack(track);
-    sourceEl.textContent = canProcessTrack(track.src)
-      ? "Local track - Web Audio ready"
-      : "Direct playback - visualizer unavailable";
+    syncSourceLabel(track, canProcessTrack(track.src));
   });
 
   linkEl.addEventListener("input", () => {
@@ -2197,14 +2096,6 @@ function buildMusicSection() {
 
   volumeEl.addEventListener("input", updateOutputControls);
   balanceEl.addEventListener("input", updateOutputControls);
-  function handleVisibilityChange() {
-    if (document.visibilityState === "hidden") {
-      handOffToDirectForBackground();
-    } else {
-      restoreProcessedAfterBackground();
-    }
-  }
-  document.addEventListener("visibilitychange", handleVisibilityChange);
   if ("mediaSession" in navigator) {
     try {
       navigator.mediaSession.setActionHandler("play", () => {
@@ -2221,16 +2112,12 @@ function buildMusicSection() {
 
   applyPreset("Flat");
   syncSourceLabel(activeTrack, canProcessTrack(activeTrack.src));
-  sourceEl.textContent = canProcessTrack(activeTrack.src)
-    ? "Local track - Web Audio ready"
-    : "Direct playback - visualizer unavailable";
   updateOutputControls();
   updateProgressUI();
   drawIdleVisualizer();
 
   wrapper.cleanup = () => {
     isMounted = false;
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
     if ("mediaSession" in navigator) {
       try {
         navigator.mediaSession.setActionHandler("play", null);
