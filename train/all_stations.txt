@@ -19,7 +19,7 @@ Blacktown, Marayong, Quakers Hill, Schofields, Riverstone, Vineyard, Mulgrave, W
 Blacktown, Doonside, Rooty Hill, Mount Druitt, St Marys, Werrington, Kingswood, Penrith, Emu Plains
 
 # Inner West
-Redfern, Macdonaldtown, Newtown, Stanmore, Petersham, Lewisham, Summer Hill, Ashfield, Croydon, Burwood
+Redfern, Macdonaldtown, Newtown, Stanmore, Petersham, Lewisham, Summer Hill, Ashfield, Croydon, Burwood 
 
 # South
 Granville, Merrylands, Guildford, Yennora, Fairfield, Canley Vale, Cabramatta, Warwick Farm, Liverpool
