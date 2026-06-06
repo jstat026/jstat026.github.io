@@ -1,6 +1,12 @@
 const STORAGE_KEY = "academic-os.cityrail.native.v1";
+const LIVE_STORAGE_KEY = "academic-os.cityrail.live.v1";
 const PID_BASE_WIDTH = 1000;
 const PID_BASE_HEIGHT = 640;
+const LIVE_MAX_RESULTS = 12;
+const TFNSW_TIME_ZONE = "Australia/Sydney";
+const TFNSW_PROXY_BASE_URL = "https://cityrail-live.tt026.workers.dev";
+const STATIC_GTFS_INDEX_BASE = "assets/cityrail/gtfs-index";
+const ALL_STATIONS_COLLAPSE_MIN_RUN = 4;
 
 const intercityLineName = "Intercity";
 const regionalLineName = "Regional";
@@ -116,8 +122,17 @@ const defaultConfig = {
   stops: [...defaultOlympicParkStops],
 };
 
+const defaultLiveSettings = {
+  stationQuery: "",
+  stationId: "",
+  stationName: "",
+  platformFilter: "",
+  routeFilter: "",
+};
+
 let audioContext = null;
 const audioBufferCache = new Map();
+const staticGtfsShardCache = new Map();
 const cleanupByRoot = new WeakMap();
 
 let allStationsGroups = [];
@@ -131,6 +146,20 @@ let stopTemplatesPromise = null;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function createOption(value, label, selected = false) {
+  const option = document.createElement("option");
+  option.value = String(value ?? "");
+  option.textContent = String(label ?? "");
+  option.selected = selected;
+  return option;
+}
+
+function setStatus(state, message) {
+  if (state?.elements?.liveStatus) {
+    state.elements.liveStatus.textContent = message || "";
+  }
 }
 
 function clampCars(value) {
@@ -249,6 +278,41 @@ function saveConfig(config) {
   }
 }
 
+function normalizeLiveSettings(raw) {
+  const merged = {
+    ...defaultLiveSettings,
+    ...(raw && typeof raw === "object" ? raw : {}),
+  };
+
+  return {
+    stationQuery: String(merged.stationQuery || "").trim(),
+    stationId: String(merged.stationId || "").trim(),
+    stationName: String(merged.stationName || "").trim(),
+    platformFilter: String(merged.platformFilter || "").trim(),
+    routeFilter: String(merged.routeFilter || "").trim(),
+  };
+}
+
+function loadLiveSettings() {
+  try {
+    const raw = window.localStorage.getItem(LIVE_STORAGE_KEY);
+    return normalizeLiveSettings(raw ? JSON.parse(raw) : null);
+  } catch {
+    return normalizeLiveSettings(null);
+  }
+}
+
+function saveLiveSettings(settings) {
+  try {
+    window.localStorage.setItem(
+      LIVE_STORAGE_KEY,
+      JSON.stringify(normalizeLiveSettings(settings))
+    );
+  } catch {
+    // ignore localStorage failures
+  }
+}
+
 function parseDepartureTime(value) {
   if (!value) {
     return null;
@@ -282,6 +346,507 @@ function parseDepartureTime(value) {
   }
 
   return { hours, minutes };
+}
+
+function getSydneyDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: TFNSW_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+}
+
+function formatDateForTfnsw(date = new Date()) {
+  const parts = getSydneyDateParts(date);
+  const year = parts.year;
+  const month = parts.month;
+  const day = parts.day;
+  return `${year}${month}${day}`;
+}
+
+function formatTimeForTfnsw(date = new Date()) {
+  const parts = getSydneyDateParts(date);
+  return `${parts.hour}${parts.minute}`;
+}
+
+function formatInputTimeFromDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const parts = getSydneyDateParts(date);
+  return `${parts.hour}:${parts.minute}`;
+}
+
+function parsePlatformFromText(value) {
+  const match = String(value || "").match(/platform\s*(\d+)/i);
+  return match ? match[1] : "";
+}
+
+function normalizePlatform(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  const platformText = parsePlatformFromText(text);
+  if (platformText) {
+    return platformText;
+  }
+  if (/^\d{1,2}$/.test(text)) {
+    return text;
+  }
+  return "";
+}
+
+function isRailModeLocation(location = {}) {
+  const modes = Array.isArray(location.modes) ? location.modes.map(Number) : [];
+  return modes.includes(1);
+}
+
+function isRailTransport(transportation = {}) {
+  const product = transportation.product || {};
+  const productText = [
+    product.name,
+    transportation.operator?.name,
+    transportation.name,
+    transportation.number,
+    transportation.description,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    Number(product.class) === 1 ||
+    Number(product.iconId) === 1 ||
+    /\b(?:Sydney Trains|NSW TrainLink|Intercity|Regional|Train)\b/i.test(productText)
+  ) && !/\b(?:Bus|Buses|Light Rail|Metro|Ferry|Coach)\b/i.test(productText);
+}
+
+function cleanTfnswName(value) {
+  return String(value || "")
+    .replace(/\s+Station(?:,\s*Platform\s+\d+)?(?:,\s*[^,]+)?$/i, "")
+    .replace(/\s+Station(?:\s+Platform\s+\d+)?$/i, "")
+    .replace(/,\s*Platform\s+\d+(?:,\s*[^,]+)?$/i, "")
+    .replace(/\s+Platform\s+\d+$/i, "")
+    .replace(/,\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferLine(value) {
+  const text = String(value || "");
+  const lineMatch = text.match(/\bT[1-9]\b/i);
+  if (lineMatch) {
+    return lineMatch[0].toUpperCase();
+  }
+  if (/\b(?:BMT|CCN|SCO|SHL|HUN|Sth Coast|Blue Mountains|Central Coast|Newcastle|Hunter)\b/i.test(text)) {
+    return intercityLineName;
+  }
+  if (/\b(?:XPT|XPLORER|Regional|CoachLink|NSW TrainLink)\b/i.test(text)) {
+    return regionalLineName;
+  }
+  return defaultConfig.line;
+}
+
+function splitDestinationAndVia(value) {
+  const text = cleanTfnswName(value);
+  const parts = text.split(/\s+via\s+/i);
+  if (parts.length >= 2) {
+    return {
+      destination: parts[0].trim(),
+      via: `via ${parts.slice(1).join(" via ").trim()}`,
+    };
+  }
+  return { destination: text, via: "" };
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function getTransportText(transportation = {}) {
+  return [
+    transportation.number,
+    transportation.name,
+    transportation.disassembledName,
+    transportation.description,
+    transportation.product?.name,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function normalizeStopCandidate(location) {
+  if (!location || typeof location !== "object") {
+    return null;
+  }
+  if (!isRailModeLocation(location)) {
+    return null;
+  }
+  const id = location.properties?.stopId || location.id || location.extId;
+  const name = cleanTfnswName(
+    location.disassembledName || location.name || location.parent?.name || id
+  );
+  if (!id || !name) {
+    return null;
+  }
+  return { id: String(id), name };
+}
+
+function parseStopCandidates(payload) {
+  const locations = Array.isArray(payload?.locations) ? payload.locations : [];
+  return uniqueStrings(
+    locations
+      .map(normalizeStopCandidate)
+      .filter(Boolean)
+      .map((item) => JSON.stringify(item))
+  )
+    .map((item) => JSON.parse(item))
+    .slice(0, 40);
+}
+
+function extractOnwardStops(event, destination) {
+  const onward =
+    event?.onwardLocations ||
+    event?.onwardStops ||
+    event?.transportation?.onwardLocations ||
+    [];
+  const stops = Array.isArray(onward)
+    ? onward
+        .map((item) => cleanTfnswName(item.disassembledName || item.name || item))
+        .filter(Boolean)
+    : [];
+  const destinationName = cleanTfnswName(destination);
+  if (destinationName && !stops.includes(destinationName)) {
+    stops.push(destinationName);
+  }
+  return stops.length ? stops : destinationName ? [destinationName] : [];
+}
+
+function extractStopName(value) {
+  if (!value) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return cleanTfnswName(value);
+  }
+  return cleanTfnswName(
+    value.disassembledName ||
+      value.name ||
+      value.location?.disassembledName ||
+      value.location?.name ||
+      value.parent?.disassembledName ||
+      value.parent?.name
+  );
+}
+
+function normalizeTripIdentifier(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getStaticGtfsShardId(value) {
+  let hash = 0x811c9dc5;
+  const text = normalizeTripIdentifier(value);
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0").slice(0, 2);
+}
+
+function getStaticGtfsShardUrl(shardId) {
+  return new URL(`${STATIC_GTFS_INDEX_BASE}/shards/${shardId}.json`, window.location.href);
+}
+
+async function fetchStaticGtfsShard(shardId) {
+  if (staticGtfsShardCache.has(shardId)) {
+    return staticGtfsShardCache.get(shardId);
+  }
+
+  const request = fetch(getStaticGtfsShardUrl(shardId).toString(), { cache: "no-store" })
+    .then((response) => {
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(`Static GTFS shard failed (${response.status})`);
+      }
+      return response.json();
+    })
+    .catch(() => null);
+  staticGtfsShardCache.set(shardId, request);
+  return request;
+}
+
+function normalizeStaticGtfsTripRecord(record, tripId) {
+  if (Array.isArray(record)) {
+    return {
+      matchedTripId: tripId,
+      stops: record,
+      orderedStops: false,
+    };
+  }
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+  const stops = Array.isArray(record.stops) ? record.stops : [];
+  return {
+    matchedTripId: tripId,
+    stops,
+    orderedStops: true,
+  };
+}
+
+async function fetchStaticGtfsTripById(tripId) {
+  const normalizedTripId = normalizeTripIdentifier(tripId);
+  if (!normalizedTripId) {
+    return null;
+  }
+  const shard = await fetchStaticGtfsShard(getStaticGtfsShardId(normalizedTripId));
+  return normalizeStaticGtfsTripRecord(shard?.trips?.[normalizedTripId], normalizedTripId);
+}
+
+function sortGtfsStopRows(stops) {
+  return Array.isArray(stops)
+    ? [...stops].sort((a, b) => Number(a.stopSequence || 0) - Number(b.stopSequence || 0))
+    : [];
+}
+
+function getGtfsStopRows(payload) {
+  if (!Array.isArray(payload?.stops)) {
+    return [];
+  }
+  return payload.orderedStops ? [...payload.stops] : sortGtfsStopRows(payload.stops);
+}
+
+function getGtfsStopName(stop) {
+  return cleanTfnswName(stop?.stopName || stop?.name || stop?.stopId);
+}
+
+function getGtfsOriginIndex(stopRows, departure) {
+  const originId = String(departure.originId || "");
+  const originName = cleanTfnswName(departure.originName);
+  return stopRows.findIndex((stop) => {
+    const stopId = String(stop.stopId || "");
+    const parentStopId = String(stop.parentStopId || stop.parent_station || "");
+    const stopName = getGtfsStopName(stop);
+    return (
+      (originId && (stopId === originId || parentStopId === originId)) ||
+      (originName && stopName === originName)
+    );
+  });
+}
+
+function getGtfsRemainingRows(stopRows, departure) {
+  const originIndex = getGtfsOriginIndex(stopRows, departure);
+  if (originIndex < 0) {
+    return null;
+  }
+  return stopRows.slice(originIndex + 1).filter((stop) => stop.dropoff !== false);
+}
+
+function scoreGtfsTripCandidate(stopRows, departure) {
+  const remainingRows = getGtfsRemainingRows(stopRows, departure);
+  if (!remainingRows) {
+    return -1;
+  }
+
+  const remainingNames = remainingRows.map((stop) => normalizeSimpleStationName(getGtfsStopName(stop)));
+  const destinationName = normalizeSimpleStationName(departure.destination);
+  const viaName = normalizeSimpleStationName(String(departure.via || "").replace(/^via\s+/i, ""));
+
+  let score = remainingRows.length;
+  if (destinationName && remainingNames.includes(destinationName)) {
+    score += 1000;
+  }
+  if (viaName && remainingNames.includes(viaName)) {
+    score += 250;
+  }
+  if (remainingRows.length > 1) {
+    score += 25;
+  }
+  return score;
+}
+
+function trimGtfsRowsToDestination(stopRows, departure) {
+  const destinationName = normalizeSimpleStationName(departure.destination);
+  if (!destinationName) {
+    return stopRows;
+  }
+
+  const destinationIndex = stopRows.findIndex(
+    (stop) => normalizeSimpleStationName(getGtfsStopName(stop)) === destinationName
+  );
+  return destinationIndex >= 0 ? stopRows.slice(0, destinationIndex + 1) : stopRows;
+}
+
+async function fetchStaticGtfsTripStops(departure) {
+  const tripIds = Array.isArray(departure.tripIds)
+    ? uniqueStrings(departure.tripIds.map(normalizeTripIdentifier))
+    : [];
+  let fallbackPayload = null;
+  let bestPayload = null;
+  let bestScore = -1;
+
+  for (const tripId of tripIds) {
+    const payload = await fetchStaticGtfsTripById(tripId);
+    const stopRows = getGtfsStopRows(payload);
+    if (!payload || !stopRows.length) {
+      continue;
+    }
+    fallbackPayload ||= { ...payload, stops: stopRows };
+    const score = scoreGtfsTripCandidate(stopRows, departure);
+    if (score < 0) {
+      continue;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestPayload = {
+        ...payload,
+        stops: stopRows,
+      };
+    }
+  }
+
+  return bestPayload || fallbackPayload;
+}
+
+function parseGtfsTripStops(payload, departure) {
+  const stopRows = getGtfsStopRows(payload);
+  const remainingRows = getGtfsRemainingRows(stopRows, departure);
+
+  if (!remainingRows) {
+    return [];
+  }
+
+  return uniqueStrings(
+    trimGtfsRowsToDestination(remainingRows, departure)
+      .map(getGtfsStopName)
+      .filter(Boolean)
+  );
+}
+
+async function fetchTripDetails(state, departure) {
+  if (!departure?.tripIds?.length) {
+    return { stops: [], platform: "", carsCount: 0 };
+  }
+
+  const staticPayload = await fetchStaticGtfsTripStops(departure);
+  return {
+    stops: staticPayload ? parseGtfsTripStops(staticPayload, departure) : [],
+    platform: "",
+    carsCount: 0,
+  };
+}
+
+function normalizeDepartureEvent(event, index, filters = {}) {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+
+  const transportation = event.transportation || {};
+  if (!isRailTransport(transportation)) {
+    return null;
+  }
+  const destinationRaw =
+    transportation.destination?.name ||
+    transportation.destination?.disassembledName ||
+    transportation.disassembledName ||
+    transportation.name ||
+    event.destination?.name ||
+    "";
+  const { destination, via } = splitDestinationAndVia(destinationRaw);
+  if (!destination) {
+    return null;
+  }
+
+  const departAt =
+    event.departureTimeEstimated ||
+    event.departureTimePlanned ||
+    event.arrivalTimeEstimated ||
+    event.arrivalTimePlanned ||
+    "";
+  const platform =
+    normalizePlatform(event.location?.properties?.platformName) ||
+    normalizePlatform(event.location?.properties?.plannedPlatformName) ||
+    normalizePlatform(event.location?.properties?.platform) ||
+    normalizePlatform(event.location?.name) ||
+    normalizePlatform(event.location?.disassembledName);
+  const transportText = getTransportText(transportation);
+  const stops = extractOnwardStops(event, destination);
+  const destinationId =
+    transportation.destination?.id ||
+    transportation.destination?.extId ||
+    transportation.destination?.properties?.stopId ||
+    "";
+  const tripIds = uniqueStrings([
+    transportation.properties?.gtfsTripId,
+    transportation.properties?.RealtimeTripId,
+    transportation.properties?.AVMSTripID,
+    transportation.properties?.tripCode,
+    event.properties?.RealtimeTripId,
+    event.properties?.AVMSTripID,
+    event.properties?.tripCode,
+  ].map(normalizeTripIdentifier));
+
+  return {
+    id: String(event.id || event.globalId || event.properties?.journeyId || `${departAt}-${index}`),
+    originId: filters.stationId || event.location?.properties?.stopId || event.location?.id || event.location?.extId || "",
+    originName: filters.stationName || extractStopName(event.location),
+    destinationId: destinationId ? String(destinationId) : "",
+    rawDepartAt: departAt,
+    tripId: tripIds[0] || "",
+    tripIds,
+    line: inferLine(transportText),
+    routeName: transportation.name || transportation.disassembledName || transportText || "Sydney Trains",
+    destination,
+    via,
+    platform,
+    departsTime: formatInputTimeFromDate(departAt),
+    departsDisplay: departAt ? new Date(departAt).toLocaleTimeString("en-AU", {
+      timeZone: TFNSW_TIME_ZONE,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }) : "--",
+    stopsType: stops.length > 2 ? "Limited Stops" : "All Stops",
+    carsCount: defaultConfig.carsCount,
+    stops,
+  };
+}
+
+function parseDepartureEvents(payload, filters = {}) {
+  const events = Array.isArray(payload?.stopEvents) ? payload.stopEvents : [];
+  const routeFilter = String(filters.routeFilter || "").trim().toLowerCase();
+  const platformFilter = String(filters.platformFilter || "").trim();
+
+  return events
+    .map((event, index) => normalizeDepartureEvent(event, index, filters))
+    .filter(Boolean)
+    .filter((item) => !routeFilter || item.routeName.toLowerCase().includes(routeFilter))
+    .filter((item) => !platformFilter || item.platform === platformFilter)
+    .slice(0, LIVE_MAX_RESULTS);
+}
+
+async function fetchLiveJson(state, path, params) {
+  const url = new URL(path, `${TFNSW_PROXY_BASE_URL}/`);
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  });
+
+  const response = await fetch(url.toString(), { cache: "no-store" });
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(message || `Live request failed (${response.status})`);
+  }
+  return response.json();
 }
 
 function computeDepartureDate(value) {
@@ -560,7 +1125,7 @@ function matchRunLength(stopKeys, startIndex, group) {
 
 function collapseStops(stops) {
   const cleaned = Array.isArray(stops) ? stops.filter(Boolean) : [];
-  if (!allStationsGroups.length || cleaned.length < 3) {
+  if (!allStationsGroups.length || cleaned.length < ALL_STATIONS_COLLAPSE_MIN_RUN) {
     return cleaned.map((name) => ({ type: "station", name }));
   }
 
@@ -580,14 +1145,14 @@ function collapseStops(stops) {
 
   while (i < cleaned.length) {
     const bestRun = bestRunAtIndex(i);
-    if (bestRun >= 3) {
+    if (bestRun >= ALL_STATIONS_COLLAPSE_MIN_RUN) {
       const lastIndex = i + bestRun - 1;
       if (lastCollapseEnd !== cleaned[i]) {
         result.push({ type: "station", name: cleaned[i] });
       }
       result.push({ type: "allStationsTo", to: cleaned[lastIndex] });
       lastCollapseEnd = cleaned[lastIndex];
-      const canChain = bestRunAtIndex(lastIndex) >= 3;
+      const canChain = bestRunAtIndex(lastIndex) >= ALL_STATIONS_COLLAPSE_MIN_RUN;
       i = canChain ? lastIndex : lastIndex + 1;
       continue;
     }
@@ -631,7 +1196,7 @@ function formatStops(stops) {
     }
 
     if (isLast) {
-      phrases.push(`and ${token.name}`);
+      phrases.push(afterAllStations ? `and then ${token.name}` : `and ${token.name}`);
       return;
     }
 
@@ -797,7 +1362,7 @@ function buildAnnouncementAudio(config) {
         }
 
         if (isLast) {
-          files.push(makeAudioEntry("and.mp3"));
+          files.push(makeAudioEntry(afterAllStations ? "and then.mp3" : "and.mp3"));
           const name = makeStationAudioEntry(token.name, true);
           if (name) {
             files.push(name);
@@ -1117,15 +1682,31 @@ function renderStopsList(state) {
   listEl.classList.toggle("is-scrolling", shouldScroll);
 
   if (!shouldScroll) {
-    listEl.innerHTML = stops.map((stop) => `<li>${stop}</li>`).join("");
+    listEl.replaceChildren(
+      ...stops.map((stop) => {
+        const item = document.createElement("li");
+        item.textContent = stop;
+        return item;
+      })
+    );
     return;
   }
 
   const gaps = ["", "", ""];
   const loopStops = stops.concat(gaps, stops);
-  listEl.innerHTML = loopStops
-    .map((stop) => `<li${stop ? "" : ' class="pid__gap" aria-hidden="true"'}>${stop || "\u00a0"}</li>`)
-    .join("");
+  listEl.replaceChildren(
+    ...loopStops.map((stop) => {
+      const item = document.createElement("li");
+      if (!stop) {
+        item.className = "pid__gap";
+        item.setAttribute("aria-hidden", "true");
+        item.textContent = "\u00a0";
+      } else {
+        item.textContent = stop;
+      }
+      return item;
+    })
+  );
 
   const duration = Math.max(14000, stops.length * 1700);
   const rowsPerLoop = stops.length + gaps.length;
@@ -1189,10 +1770,10 @@ function renderCapacityControls(state) {
 
 function populateTemplateSelect(state) {
   const options = stopTemplates.length ? stopTemplates : fallbackTemplates;
-  state.elements.templateSelect.innerHTML = [
-    '<option value="">Custom</option>',
-    ...options.map((template) => `<option value="${template.name}">${template.name}</option>`),
-  ].join("");
+  state.elements.templateSelect.replaceChildren(
+    createOption("", "Custom"),
+    ...options.map((template) => createOption(template.name, template.name))
+  );
 }
 
 function updatePidScale(state) {
@@ -1310,6 +1891,169 @@ function applyTemplate(state, templateName) {
   render(state);
 }
 
+function renderLiveStationOptions(state) {
+  const select = state.elements.liveStationSelect;
+  const currentId = state.liveSettings.stationId;
+  const options = state.liveStations || [];
+  select.replaceChildren(
+    createOption("", options.length ? "Select a station" : "Search for a station", !currentId),
+    ...options.map((station) => createOption(station.id, station.name, station.id === currentId))
+  );
+}
+
+function renderLiveDepartures(state) {
+  const listEl = state.elements.liveResults;
+  const departures = state.liveDepartures || [];
+  listEl.replaceChildren();
+
+  if (!departures.length) {
+    const empty = document.createElement("p");
+    empty.className = "cityrail-live-empty";
+    empty.textContent = "No live departures loaded.";
+    listEl.appendChild(empty);
+    return;
+  }
+
+  departures.forEach((departure, index) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "cityrail-live-result";
+    row.dataset.liveDepartureIndex = String(index);
+
+    const time = document.createElement("span");
+    time.className = "cityrail-live-time";
+    time.textContent = departure.departsDisplay || departure.departsTime || "--";
+
+    const service = document.createElement("span");
+    service.className = "cityrail-live-service";
+    service.textContent = `${departure.line} ${departure.destination}`;
+
+    const meta = document.createElement("span");
+    meta.className = "cityrail-live-meta";
+    meta.textContent = [
+      departure.platform ? `Platform ${departure.platform}` : "",
+      departure.via,
+      departure.routeName,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    row.append(time, service, meta);
+    listEl.appendChild(row);
+  });
+}
+
+function saveLiveStateFromInputs(state) {
+  state.liveSettings = normalizeLiveSettings({
+    ...state.liveSettings,
+    stationQuery: state.elements.liveStationQuery.value,
+    stationId: state.elements.liveStationSelect.value,
+    stationName:
+      state.liveStations.find((station) => station.id === state.elements.liveStationSelect.value)?.name ||
+      state.liveSettings.stationName,
+    platformFilter: state.elements.livePlatformFilter.value,
+    routeFilter: state.elements.liveRouteFilter.value,
+  });
+  saveLiveSettings(state.liveSettings);
+}
+
+async function lookupLiveStations(state) {
+  saveLiveStateFromInputs(state);
+  const query = state.liveSettings.stationQuery;
+  if (!query) {
+    setStatus(state, "Enter a station name to search.");
+    return;
+  }
+
+  setStatus(state, "Searching stations...");
+  try {
+    const payload = await fetchLiveJson(state, "/api/tfnsw/stop-finder", { query });
+    state.liveStations = parseStopCandidates(payload);
+    if (state.liveStations.length && !state.liveStations.some((station) => station.id === state.liveSettings.stationId)) {
+      state.liveSettings.stationId = state.liveStations[0].id;
+      state.liveSettings.stationName = state.liveStations[0].name;
+    }
+    renderLiveStationOptions(state);
+    saveLiveSettings(state.liveSettings);
+    setStatus(
+      state,
+      state.liveStations.length
+        ? `Found ${state.liveStations.length} station match${state.liveStations.length === 1 ? "" : "es"}.`
+        : "No station matches found."
+    );
+  } catch (error) {
+    setStatus(state, String(error.message || error));
+  }
+}
+
+async function fetchLiveDepartures(state) {
+  saveLiveStateFromInputs(state);
+  const stationId = state.liveSettings.stationId;
+  if (!stationId) {
+    setStatus(state, "Select a station before refreshing departures.");
+    return;
+  }
+
+  setStatus(state, "Loading live departures...");
+  try {
+    const now = new Date();
+    const payload = await fetchLiveJson(state, "/api/tfnsw/departures", {
+      stopId: stationId,
+      date: formatDateForTfnsw(now),
+      time: formatTimeForTfnsw(now),
+      limit: LIVE_MAX_RESULTS,
+    });
+    state.liveDepartures = parseDepartureEvents(payload, state.liveSettings);
+    renderLiveDepartures(state);
+    setStatus(
+      state,
+      state.liveDepartures.length
+        ? `Loaded ${state.liveDepartures.length} live departure${state.liveDepartures.length === 1 ? "" : "s"}. Select one to import.`
+        : "No matching live departures found."
+    );
+  } catch (error) {
+    setStatus(state, String(error.message || error));
+  }
+}
+
+async function importLiveDeparture(state, departure) {
+  if (!departure) {
+    return;
+  }
+
+  setStatus(state, "Loading stopping pattern...");
+  let tripDetails = { stops: [], platform: "", carsCount: 0 };
+  try {
+    tripDetails = await fetchTripDetails(state, departure);
+  } catch (error) {
+    console.warn("Unable to load detailed live stopping pattern.", error);
+  }
+
+  const stops = tripDetails.stops.length ? tripDetails.stops : departure.stops;
+  const carsCount = clampCars(tripDetails.carsCount || departure.carsCount || state.config.carsCount);
+  state.config = normalizeConfig({
+    ...state.config,
+    line: departure.line || state.config.line,
+    destination: departure.destination || state.config.destination,
+    via: departure.via || "",
+    platform: tripDetails.platform || departure.platform || state.config.platform,
+    carsCount,
+    capacities: normalizeCapacities(carsCount, state.config.capacities),
+    stopsType: stops?.length > 2 ? "Limited Stops" : departure.stopsType || "Live Service",
+    departsTime: departure.departsTime || state.config.departsTime,
+    stops: stops?.length ? stops : [departure.destination].filter(Boolean),
+  });
+  state.rawStopsInput = state.config.stops.join("\n");
+  state.elements.templateSelect.value = "";
+  render(state);
+  setStatus(
+    state,
+    tripDetails.stops.length
+      ? `Imported ${departure.destination} with ${tripDetails.stops.length} stops.`
+      : `Imported ${departure.destination}; detailed stops were not available.`
+  );
+}
+
 async function playAnnouncement(state) {
   await ensureResources();
   stopAnnouncement(state);
@@ -1342,6 +2086,38 @@ export function createCityRailNativeApp() {
           <option value="">Custom</option>
         </select>
       </label>
+
+      <section class="cityrail-live-panel" aria-label="Live timetable import">
+        <h5 class="cityrail-live-title">LIVE TIMETABLE</h5>
+        <label class="cityrail-label">
+          Station Search
+          <input class="cityrail-input" data-cr-live="stationQuery" placeholder="Central" />
+        </label>
+        <button type="button" class="retro-btn cityrail-live-btn" data-cr-live-action="lookup">
+          Find Stations
+        </button>
+        <label class="cityrail-label">
+          Station
+          <select class="cityrail-input" data-cr-live="station">
+            <option value="">Search for a station</option>
+          </select>
+        </label>
+        <div class="cityrail-control-row">
+          <label class="cityrail-label">
+            Platform
+            <input class="cityrail-input" data-cr-live="platform" placeholder="any" />
+          </label>
+          <label class="cityrail-label">
+            Route
+            <input class="cityrail-input" data-cr-live="route" placeholder="any" />
+          </label>
+        </div>
+        <button type="button" class="retro-btn cityrail-live-btn" data-cr-live-action="refresh">
+          Refresh Live Services
+        </button>
+        <p class="cityrail-live-status" data-cr-live-status>Search a station to load live services.</p>
+        <div class="cityrail-live-results" data-cr-live-results></div>
+      </section>
 
       <label class="cityrail-label">
         Line
@@ -1488,6 +2264,7 @@ export function initCityRailNativeApp(root) {
   root.dataset.cityrailMounted = "true";
 
   const config = normalizeConfig(loadConfig());
+  const liveSettings = loadLiveSettings();
   const fields = {
     line: root.querySelector('[data-cr-field="line"]'),
     destination: root.querySelector('[data-cr-field="destination"]'),
@@ -1503,6 +2280,11 @@ export function initCityRailNativeApp(root) {
   const state = {
     root,
     config,
+    liveSettings,
+    liveStations: liveSettings.stationId
+      ? [{ id: liveSettings.stationId, name: liveSettings.stationName || liveSettings.stationId }]
+      : [],
+    liveDepartures: [],
     rawStopsInput: config.stops.join("\n"),
     stopRafId: 0,
     tickerId: 0,
@@ -1523,6 +2305,14 @@ export function initCityRailNativeApp(root) {
       pidViewport: root.querySelector("[data-cr-pid-viewport]"),
       pidStage: root.querySelector("[data-cr-pid-stage]"),
       pidRoot: root.querySelector("[data-cr-pid]"),
+      liveStationQuery: root.querySelector('[data-cr-live="stationQuery"]'),
+      liveStationSelect: root.querySelector('[data-cr-live="station"]'),
+      livePlatformFilter: root.querySelector('[data-cr-live="platform"]'),
+      liveRouteFilter: root.querySelector('[data-cr-live="route"]'),
+      liveLookupButton: root.querySelector('[data-cr-live-action="lookup"]'),
+      liveRefreshButton: root.querySelector('[data-cr-live-action="refresh"]'),
+      liveStatus: root.querySelector("[data-cr-live-status]"),
+      liveResults: root.querySelector("[data-cr-live-results]"),
     },
   };
 
@@ -1555,6 +2345,50 @@ export function initCityRailNativeApp(root) {
     fieldEl.addEventListener(eventName, (event) => {
       applyFieldUpdate(fieldName, event.currentTarget.value);
     });
+  });
+
+  state.elements.liveStationQuery.value = liveSettings.stationQuery;
+  state.elements.livePlatformFilter.value = liveSettings.platformFilter;
+  state.elements.liveRouteFilter.value = liveSettings.routeFilter;
+  renderLiveStationOptions(state);
+  renderLiveDepartures(state);
+
+  [
+    state.elements.liveStationQuery,
+    state.elements.livePlatformFilter,
+    state.elements.liveRouteFilter,
+  ].forEach((fieldEl) => {
+    fieldEl.addEventListener("input", () => {
+      saveLiveStateFromInputs(state);
+    });
+  });
+
+  state.elements.liveStationSelect.addEventListener("change", () => {
+    saveLiveStateFromInputs(state);
+  });
+
+  state.elements.liveStationQuery.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      lookupLiveStations(state);
+    }
+  });
+
+  state.elements.liveLookupButton.addEventListener("click", () => {
+    lookupLiveStations(state);
+  });
+
+  state.elements.liveRefreshButton.addEventListener("click", () => {
+    fetchLiveDepartures(state);
+  });
+
+  state.elements.liveResults.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-live-departure-index]");
+    if (!button) {
+      return;
+    }
+    const index = Number(button.dataset.liveDepartureIndex);
+    await importLiveDeparture(state, state.liveDepartures[index]);
   });
 
   state.elements.templateSelect.addEventListener("change", (event) => {

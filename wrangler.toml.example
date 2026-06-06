@@ -1,0 +1,6 @@
+name = "cityrail-live"
+main = "workers/tfnsw-proxy.js"
+compatibility_date = "2026-06-06"
+
+[vars]
+ALLOWED_ORIGIN = "*"

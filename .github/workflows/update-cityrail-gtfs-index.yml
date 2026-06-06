@@ -1,0 +1,38 @@
+name: Update CityRail GTFS index
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "24 16 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  update-index:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build GTFS index
+        env:
+          TFNSW_API_KEY: ${{ secrets.TFNSW_API_KEY }}
+        run: python3 tools/build-cityrail-gtfs-index.py
+
+      - name: Commit updated index
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/cityrail/gtfs-index
+          if git diff --cached --quiet; then
+            echo "GTFS index is already up to date."
+            exit 0
+          fi
+          git commit -m "Update CityRail GTFS index"
+          git push

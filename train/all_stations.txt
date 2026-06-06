@@ -6,7 +6,8 @@
 
 
 # Northern line
-Strathfield, North Strathfield, Concord West, Rhodes, Meadowbank, West Ryde, Denistone, Eastwood, Epping, Cheltenham, Beecroft, Pennant Hills, Thornleigh, Normanhurst, Hornsby
+Strathfield, North Strathfield, Concord West, Rhodes, Meadowbank, West Ryde, Denistone, Eastwood, Epping
+Epping, Cheltenham, Beecroft, Pennant Hills, Thornleigh, Normanhurst, Hornsby
 
 # North Shore
 North Sydney,Waverton,Wollstonecraft,St Leonards,Artarmon,Chatswood
