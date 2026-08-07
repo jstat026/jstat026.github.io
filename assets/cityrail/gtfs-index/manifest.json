@@ -3,7 +3,7 @@
     "/v1/gtfs/schedule/sydneytrains",
     "/v1/gtfs/schedule/nswtrains"
   ],
-  "generatedAt": "2026-08-05T17:56:27.963265+00:00",
+  "generatedAt": "2026-08-07T17:11:45.580972+00:00",
   "hashAlgorithm": "fnv1a-32-prefix-2",
   "schemaVersion": 2,
   "shardCount": 256,
@@ -265,5 +265,5 @@
     "fe",
     "ff"
   ],
-  "tripCount": 125614
+  "tripCount": 147456
 }
